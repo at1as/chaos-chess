@@ -28,21 +28,6 @@
         </section>
 
         <section class="board-panel">
-          <div class="board-header">
-            <div>
-              <p class="label">Board</p>
-              <p class="board-subtitle">Click a piece, then click a highlighted square.</p>
-            </div>
-            <label class="promotion-control" for="promotion-select">
-              Promotion
-              <select id="promotion-select">
-                <option value="q">Queen</option>
-                <option value="r">Rook</option>
-                <option value="b">Bishop</option>
-                <option value="n">Knight</option>
-              </select>
-            </label>
-          </div>
           <div class="board-wrap">
             <div class="file-labels top" aria-hidden="true"></div>
             <div class="board-grid-frame">
@@ -55,50 +40,87 @@
         </section>
 
         <aside class="sidebar">
-          <section class="panel">
-            <div class="panel-header">
-              <p class="label">Variants</p>
-              <p class="panel-copy">Changes apply when you start a new game.</p>
+          <details class="panel collapsible-panel" open>
+            <summary class="panel-summary">
+              <div class="panel-header">
+                <p class="label">Variants</p>
+                <p class="panel-copy">Changes apply when you start a new game.</p>
+              </div>
+            </summary>
+            <div class="panel-body">
+              <form id="variant-form" class="variant-form">
+                <label class="toggle-card">
+                  <input type="checkbox" name="friendlyFire">
+                  <span class="toggle-copy">
+                    <strong>Friendly Fire</strong>
+                    <small>Pieces may capture allied pieces, but never an allied king.</small>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" name="kamikaze">
+                  <span class="toggle-copy">
+                    <strong>Kamikaze</strong>
+                    <small>The capturing piece also disappears after any capture.</small>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" name="wrapAround">
+                  <span class="toggle-copy">
+                    <strong>Wrap Around</strong>
+                    <small>Moves may cross between files a and h, but checks never cross that seam.</small>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" name="doubleDirectionPawns">
+                  <span class="toggle-copy">
+                    <strong>Double-Direction Pawns</strong>
+                    <small>Pawns may move and capture both forward and backward.</small>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" name="jumpPawns">
+                  <span class="toggle-copy">
+                    <strong>Jump Pawns</strong>
+                    <small>Pawns may always move one or two squares if the path stays clear.</small>
+                  </span>
+                </label>
+              </form>
             </div>
-            <form id="variant-form" class="variant-form">
-              <label class="toggle-card">
-                <input type="checkbox" name="friendlyFire">
-                <span>Friendly Fire</span>
-                <small>Pieces may capture allied pieces, but never an allied king.</small>
-              </label>
-              <label class="toggle-card">
-                <input type="checkbox" name="kamikaze">
-                <span>Kamikaze</span>
-                <small>The capturing piece also disappears after any capture.</small>
-              </label>
-              <label class="toggle-card">
-                <input type="checkbox" name="wrapAround">
-                <span>Wrap Around</span>
-                <small>Moves may cross between files a and h, but checks never cross that seam.</small>
-              </label>
-              <label class="toggle-card">
-                <input type="checkbox" name="doubleDirectionPawns">
-                <span>Double-Direction Pawns</span>
-                <small>Pawns may move and capture both forward and backward.</small>
-              </label>
-              <label class="toggle-card">
-                <input type="checkbox" name="jumpPawns">
-                <span>Jump Pawns</span>
-                <small>Pawns may always move one or two squares if the path stays clear.</small>
-              </label>
-            </form>
-          </section>
+          </details>
 
-          <section class="panel">
-            <div class="panel-header">
-              <p class="label">Move Log</p>
-              <p class="panel-copy">Variant tags are shown inline when they matter.</p>
+          <details class="panel collapsible-panel">
+            <summary class="panel-summary">
+              <div class="panel-header">
+                <p class="label">Move Log</p>
+                <p class="panel-copy">Variant tags are shown inline when they matter.</p>
+              </div>
+            </summary>
+            <div class="panel-body">
+              <ol id="move-log" class="move-log"></ol>
             </div>
-            <ol id="move-log" class="move-log"></ol>
-          </section>
+          </details>
         </aside>
       </main>
     </div>
+
+    <dialog
+      id="promotion-panel"
+      class="promotion-modal"
+      aria-labelledby="promotion-title"
+      aria-describedby="promotion-text"
+    >
+      <div class="promotion-dialog">
+        <p id="promotion-title" class="label">Promotion</p>
+        <p id="promotion-text" class="panel-copy">Choose a piece for your pawn.</p>
+        <div class="promotion-options">
+          <button class="promotion-option" type="button" data-piece="q">Queen</button>
+          <button class="promotion-option" type="button" data-piece="r">Rook</button>
+          <button class="promotion-option" type="button" data-piece="b">Bishop</button>
+          <button class="promotion-option" type="button" data-piece="n">Knight</button>
+        </div>
+        <button id="promotion-cancel-button" class="promotion-cancel" type="button">Cancel</button>
+      </div>
+    </dialog>
 
     <script src="./src/engine.js"></script>
     <script src="./src/app.js"></script>

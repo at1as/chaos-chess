@@ -9,7 +9,7 @@
 
   var FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
   var PIECE_GLYPHS = {
-    w: { k: "♔", q: "♕", r: "♖", b: "♗", n: "♘", p: "♙" },
+    w: { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" },
     b: { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" }
   };
   var PIECE_NAMES = {

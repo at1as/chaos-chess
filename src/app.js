@@ -9,12 +9,48 @@
   var variantForm = document.getElementById("variant-form");
   var newGameButton = document.getElementById("new-game-button");
   var undoButton = document.getElementById("undo-button");
-  var promotionSelect = document.getElementById("promotion-select");
+  var promotionPanel = document.getElementById("promotion-panel");
+  var promotionText = document.getElementById("promotion-text");
+  var promotionCancelButton = document.getElementById("promotion-cancel-button");
+  var promotionButtons = Array.prototype.slice.call(document.querySelectorAll(".promotion-option"));
+  var VARIANT_SETTINGS_STORAGE_KEY = "chaos-chess.variant-settings";
   var selectedSquare = null;
   var legalMoves = [];
   var lastMove = null;
+  var pendingPromotion = null;
   var squares = [];
   var game = new engine.ChessGame(engine.DEFAULT_RULES);
+
+  function loadSavedRules() {
+    var rawValue;
+
+    try {
+      rawValue = window.localStorage.getItem(VARIANT_SETTINGS_STORAGE_KEY);
+    } catch (error) {
+      return engine.DEFAULT_RULES;
+    }
+
+    if (!rawValue) {
+      return engine.DEFAULT_RULES;
+    }
+
+    try {
+      return engine.normalizeRules(JSON.parse(rawValue));
+    } catch (error) {
+      return engine.DEFAULT_RULES;
+    }
+  }
+
+  function saveRules(rules) {
+    try {
+      window.localStorage.setItem(
+        VARIANT_SETTINGS_STORAGE_KEY,
+        JSON.stringify(engine.normalizeRules(rules))
+      );
+    } catch (error) {
+      return;
+    }
+  }
 
   function currentRulesFromForm() {
     return {
@@ -24,6 +60,16 @@
       doubleDirectionPawns: variantForm.elements.doubleDirectionPawns.checked,
       jumpPawns: variantForm.elements.jumpPawns.checked
     };
+  }
+
+  function applyRulesToForm(rules) {
+    var normalizedRules = engine.normalizeRules(rules);
+
+    variantForm.elements.friendlyFire.checked = normalizedRules.friendlyFire;
+    variantForm.elements.kamikaze.checked = normalizedRules.kamikaze;
+    variantForm.elements.wrapAround.checked = normalizedRules.wrapAround;
+    variantForm.elements.doubleDirectionPawns.checked = normalizedRules.doubleDirectionPawns;
+    variantForm.elements.jumpPawns.checked = normalizedRules.jumpPawns;
   }
 
   function buildAxisLabels() {
@@ -74,7 +120,9 @@
     var analysis = game.analysis;
     var turnName = game.state.turn === "w" ? "White" : "Black";
 
-    if (analysis.status === "checkmate") {
+    if (pendingPromotion) {
+      statusText.textContent = (pendingPromotion.color === "w" ? "White" : "Black") + " must choose a promotion piece.";
+    } else if (analysis.status === "checkmate") {
       statusText.textContent = (analysis.winner === "w" ? "White" : "Black") + " wins by checkmate.";
     } else if (analysis.status === "stalemate") {
       statusText.textContent = "Stalemate.";
@@ -104,6 +152,40 @@
     }
 
     moveLog.innerHTML = markup;
+  }
+
+  function isPromotionMove(move) {
+    return move && move.piece && move.piece.type === "p" && (move.to.y === 0 || move.to.y === 7);
+  }
+
+  function hidePromotionChooser() {
+    pendingPromotion = null;
+
+    if (typeof promotionPanel.close === "function" && promotionPanel.open) {
+      promotionPanel.close();
+      return;
+    }
+
+    promotionPanel.hidden = true;
+  }
+
+  function showPromotionChooser(move) {
+    pendingPromotion = {
+      from: { x: move.from.x, y: move.from.y },
+      to: { x: move.to.x, y: move.to.y },
+      color: move.piece.color
+    };
+    promotionText.textContent = "Choose a piece for the pawn on " + engine.coordToAlgebraic(move.to.x, move.to.y) + ".";
+
+    if (typeof promotionPanel.showModal === "function") {
+      promotionPanel.showModal();
+    } else {
+      promotionPanel.hidden = false;
+    }
+
+    if (promotionButtons.length > 0) {
+      promotionButtons[0].focus();
+    }
   }
 
   function renderBoard() {
@@ -197,6 +279,10 @@
     var chosenMove = null;
     var result;
 
+    if (pendingPromotion) {
+      return;
+    }
+
     if (game.analysis.status !== "active") {
       return;
     }
@@ -210,7 +296,14 @@
       }
 
       if (chosenMove) {
-        result = game.move(selectedSquare.x, selectedSquare.y, x, y, promotionSelect.value);
+        if (isPromotionMove(chosenMove)) {
+          clearSelection();
+          showPromotionChooser(chosenMove);
+          render();
+          return;
+        }
+
+        result = game.move(selectedSquare.x, selectedSquare.y, x, y);
 
         if (result.ok) {
           lastMove = {
@@ -226,7 +319,7 @@
 
     if (piece && piece.color === game.state.turn) {
       selectedSquare = { x: x, y: y };
-      legalMoves = game.getLegalMovesFrom(x, y, promotionSelect.value);
+      legalMoves = game.getLegalMovesFrom(x, y);
     } else {
       clearSelection();
     }
@@ -235,13 +328,54 @@
   }
 
   function startNewGame() {
-    game.setRulesAndReset(currentRulesFromForm());
+    var rules = currentRulesFromForm();
+
+    saveRules(rules);
+    game.setRulesAndReset(rules);
+    hidePromotionChooser();
     clearSelection();
     lastMove = null;
     render();
   }
 
+  function commitPromotionChoice(pieceType) {
+    var result;
+
+    if (!pendingPromotion) {
+      return;
+    }
+
+    result = game.move(
+      pendingPromotion.from.x,
+      pendingPromotion.from.y,
+      pendingPromotion.to.x,
+      pendingPromotion.to.y,
+      pieceType
+    );
+
+    if (result.ok) {
+      lastMove = {
+        from: result.move.from,
+        to: result.move.to
+      };
+      hidePromotionChooser();
+      clearSelection();
+      render();
+    }
+  }
+
+  function cancelPromotion() {
+    hidePromotionChooser();
+    clearSelection();
+    render();
+  }
+
   function undoMove() {
+    if (pendingPromotion) {
+      cancelPromotion();
+      return;
+    }
+
     if (game.undo()) {
       clearSelection();
       lastMove = null;
@@ -249,9 +383,43 @@
     }
   }
 
+  function onPromotionDialogCancel(event) {
+    if (pendingPromotion) {
+      event.preventDefault();
+      cancelPromotion();
+    }
+  }
+
+  function onPromotionDialogClick(event) {
+    if (event.target === promotionPanel && pendingPromotion) {
+      cancelPromotion();
+    }
+  }
+
+  function onVariantFormChange() {
+    saveRules(currentRulesFromForm());
+  }
+
+  function initializeVariantSettings() {
+    var savedRules = loadSavedRules();
+
+    applyRulesToForm(savedRules);
+    game.setRulesAndReset(savedRules);
+  }
+
   newGameButton.addEventListener("click", startNewGame);
   undoButton.addEventListener("click", undoMove);
+  variantForm.addEventListener("change", onVariantFormChange);
+  promotionCancelButton.addEventListener("click", cancelPromotion);
+  promotionButtons.forEach(function bindPromotionButton(button) {
+    button.addEventListener("click", function onPromotionButtonClick() {
+      commitPromotionChoice(button.dataset.piece);
+    });
+  });
+  promotionPanel.addEventListener("cancel", onPromotionDialogCancel);
+  promotionPanel.addEventListener("click", onPromotionDialogClick);
 
   buildAxisLabels();
+  initializeVariantSettings();
   render();
 }());

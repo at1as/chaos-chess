@@ -96,7 +96,6 @@ h1 {
 
 .hero-copy,
 .panel-copy,
-.board-subtitle,
 .variant-summary,
 .move-empty {
   margin: 0;
@@ -164,30 +163,63 @@ input {
   font-family: var(--font-display);
 }
 
-.board-header,
 .panel-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.promotion-control {
   display: grid;
   gap: 6px;
-  color: var(--muted);
-  font-size: 0.95rem;
 }
 
-.promotion-control select {
-  border-radius: 12px;
-  border: 1px solid rgba(77, 57, 26, 0.2);
-  background: rgba(255, 255, 255, 0.82);
-  padding: 8px 10px;
+.promotion-modal {
+  width: min(500px, calc(100% - 32px));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.promotion-modal::backdrop {
+  background: rgba(44, 30, 14, 0.34);
+  backdrop-filter: blur(6px);
+}
+
+.promotion-dialog {
+  width: 100%;
+  padding: 20px 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(77, 57, 26, 0.16);
+  background: linear-gradient(140deg, rgba(255, 249, 235, 0.98), rgba(244, 233, 203, 0.92));
+  box-shadow: 0 24px 60px rgba(36, 23, 10, 0.24);
+}
+
+.promotion-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.promotion-option,
+.promotion-cancel {
+  border-radius: 14px;
+  border: 1px solid rgba(77, 57, 26, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.promotion-option:hover,
+.promotion-cancel:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.promotion-cancel {
+  margin-top: 10px;
 }
 
 .board-wrap {
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .board-grid-frame {
@@ -273,10 +305,12 @@ input {
 }
 
 .piece.white {
-  color: #fff8ef;
+  color: #fff4dc;
+  -webkit-text-stroke: 0.65px rgba(58, 39, 18, 0.58);
   text-shadow:
-    0 0 0.5px rgba(46, 31, 16, 0.9),
-    0 2px 10px rgba(20, 12, 4, 0.22);
+    0 0 1px rgba(46, 31, 16, 0.85),
+    0 2px 5px rgba(46, 31, 16, 0.34),
+    0 5px 14px rgba(20, 12, 4, 0.28);
 }
 
 .file-labels,
@@ -313,15 +347,63 @@ input {
   gap: 20px;
 }
 
+.collapsible-panel {
+  overflow: hidden;
+}
+
+.panel-summary {
+  position: relative;
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  padding: 4px 34px 4px 0;
+  border-radius: 14px;
+  transition: background 120ms ease;
+}
+
+.panel-summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-summary::marker {
+  content: "";
+}
+
+.panel-summary::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(77, 57, 26, 0.72);
+  border-bottom: 2px solid rgba(77, 57, 26, 0.72);
+  transform: translateY(-65%) rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.panel-summary:hover {
+  background: rgba(167, 76, 51, 0.08);
+}
+
+.collapsible-panel[open] .panel-summary::after {
+  transform: translateY(-35%) rotate(225deg);
+}
+
 .variant-form {
   display: grid;
   gap: 12px;
+}
+
+.panel-body {
   margin-top: 18px;
 }
 
 .toggle-card {
   display: grid;
-  gap: 5px;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid rgba(77, 57, 26, 0.12);
@@ -331,21 +413,33 @@ input {
 
 .toggle-card input {
   margin: 0;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  align-self: start;
+  margin-top: 2px;
 }
 
-.toggle-card span {
+.toggle-copy {
+  display: grid;
+  gap: 5px;
+  grid-column: 2;
+}
+
+.toggle-copy strong {
   font-weight: 700;
   font-family: var(--font-display);
   font-size: 1.1rem;
+  line-height: 1.15;
 }
 
-.toggle-card small {
+.toggle-copy small {
   color: var(--muted);
   line-height: 1.45;
 }
 
 .move-log {
-  margin: 18px 0 0;
+  margin: 0;
   padding-left: 22px;
   display: grid;
   gap: 8px;
@@ -392,9 +486,11 @@ input {
     font-size: clamp(1.55rem, 7vw, 2.4rem);
   }
 
-  .action-row,
-  .board-header,
-  .panel-header {
+  .action-row {
     flex-direction: column;
+  }
+
+  .promotion-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
