@@ -1,5 +1,10 @@
 # AI Architecture Spec
 
+Related docs:
+
+- [ML Status](ml-status.md)
+- [ML Roadmap](ml-roadmap.md)
+
 ## Goals
 
 This project needs to satisfy three goals at the same time:

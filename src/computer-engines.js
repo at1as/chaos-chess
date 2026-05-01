@@ -1,10 +1,13 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
-    module.exports = factory(require("./engine.js"));
+    module.exports = factory(
+      require("./engine.js"),
+      require("./position-encoder.js")
+    );
   } else {
-    root.ChessPlusComputer = factory(root.ChessPlus);
+    root.ChessPlusComputer = factory(root.ChessPlus, root.ChessPlusFeatures);
   }
-}(typeof globalThis !== "undefined" ? globalThis : this, function (engine) {
+}(typeof globalThis !== "undefined" ? globalThis : this, function (engine, features) {
   "use strict";
 
   var PIECE_VALUES = {
@@ -18,6 +21,8 @@
   var PROMOTION_CHOICES = ["q", "r", "b", "n"];
   var WIN_SCORE = 1000000;
   var SEARCH_TIMEOUT_CODE = "SEARCH_TIMEOUT";
+  var DEFAULT_MODEL_SEARCH_SCALE = 600;
+  var DEFAULT_MODEL_BLEND = 1;
 
   function oppositeColor(color) {
     return color === "w" ? "b" : "w";
@@ -236,9 +241,8 @@
     );
   }
 
-  function evaluateState(state, perspectiveColor, analysis) {
+  function evaluateTerminalState(state, perspectiveColor, analysis) {
     var nextAnalysis = analysis || engine.analyzeState(state);
-    var score;
 
     if (nextAnalysis.status === "checkmate") {
       return nextAnalysis.winner === perspectiveColor ? WIN_SCORE : -WIN_SCORE;
@@ -252,6 +256,13 @@
       return state.turn === perspectiveColor ? -WIN_SCORE : WIN_SCORE;
     }
 
+    return null;
+  }
+
+  function scoreHeuristicState(state, perspectiveColor, analysis) {
+    var nextAnalysis = analysis || engine.analyzeState(state);
+    var score;
+
     score = scoreBoardWithRules(state, perspectiveColor);
     score += scoreCastlingRights(state, perspectiveColor);
     score += (nextAnalysis.legalMoves ? nextAnalysis.legalMoves.length : 0) *
@@ -262,6 +273,159 @@
     }
 
     return score;
+  }
+
+  function evaluateState(state, perspectiveColor, analysis) {
+    var terminalScore = evaluateTerminalState(state, perspectiveColor, analysis);
+
+    if (terminalScore !== null) {
+      return terminalScore;
+    }
+
+    return scoreHeuristicState(state, perspectiveColor, analysis);
+  }
+
+  function clampPrediction(value) {
+    if (value > 0.995) {
+      return 0.995;
+    }
+
+    if (value < -0.995) {
+      return -0.995;
+    }
+
+    return value;
+  }
+
+  function atanh(value) {
+    return 0.5 * Math.log((1 + value) / (1 - value));
+  }
+
+  function normalizeValueModelSpec(modelSpec) {
+    if (!modelSpec) {
+      return null;
+    }
+
+    if (modelSpec.model) {
+      return modelSpec.model;
+    }
+
+    return modelSpec;
+  }
+
+  function evaluateLinearModel(modelSpec, vector) {
+    var total = Number(modelSpec.bias) || 0;
+    var weights = modelSpec.weights || [];
+    var index;
+
+    for (index = 0; index < vector.length && index < weights.length; index += 1) {
+      total += Number(weights[index]) * vector[index];
+    }
+
+    return total;
+  }
+
+  function evaluateMlpModel(modelSpec, vector) {
+    var hiddenWeights = modelSpec.hiddenWeights || [];
+    var hiddenBiases = modelSpec.hiddenBiases || [];
+    var outputWeights = modelSpec.outputWeights || [];
+    var outputBias = Number(modelSpec.outputBias) || 0;
+    var hiddenValues = [];
+    var hiddenIndex;
+    var inputIndex;
+    var total;
+
+    for (hiddenIndex = 0; hiddenIndex < hiddenWeights.length; hiddenIndex += 1) {
+      total = Number(hiddenBiases[hiddenIndex]) || 0;
+
+      for (inputIndex = 0; inputIndex < vector.length && inputIndex < hiddenWeights[hiddenIndex].length; inputIndex += 1) {
+        total += Number(hiddenWeights[hiddenIndex][inputIndex]) * vector[inputIndex];
+      }
+
+      hiddenValues.push(Math.tanh(total));
+    }
+
+    total = outputBias;
+
+    for (hiddenIndex = 0; hiddenIndex < hiddenValues.length && hiddenIndex < outputWeights.length; hiddenIndex += 1) {
+      total += Number(outputWeights[hiddenIndex]) * hiddenValues[hiddenIndex];
+    }
+
+    return total;
+  }
+
+  function createValueModelEvaluator(modelSpec, options) {
+    var normalizedModel = normalizeValueModelSpec(modelSpec);
+    var config = options || {};
+    var scoreScale = Number(config.scoreScale) || DEFAULT_MODEL_SEARCH_SCALE;
+    var featureEncoding = config.featureEncoding ||
+      (modelSpec && modelSpec.trainingConfig && modelSpec.trainingConfig.featureEncoding) ||
+      modelSpec.featureEncoding ||
+      "absolute";
+    var encoder = null;
+
+    if (!normalizedModel) {
+      return null;
+    }
+
+    if (features) {
+      if (featureEncoding === "canonical" &&
+        typeof features.encodeCanonicalStateVector === "function") {
+        encoder = features.encodeCanonicalStateVector;
+      } else if (typeof features.encodeStateVector === "function") {
+        encoder = features.encodeStateVector;
+      }
+    }
+
+    if (!encoder) {
+      throw new Error("Position encoder is unavailable for value-model evaluation.");
+    }
+
+    return function evaluateValueModel(state, perspectiveColor) {
+      var vector = encoder(state);
+      var prediction;
+      var engineScore;
+
+      if (normalizedModel.modelType === "linear") {
+        prediction = evaluateLinearModel(normalizedModel, vector);
+      } else if (normalizedModel.modelType === "mlp") {
+        prediction = evaluateMlpModel(normalizedModel, vector);
+      } else {
+        throw new Error("Unsupported value model type: " + normalizedModel.modelType);
+      }
+
+      engineScore = atanh(clampPrediction(prediction)) * scoreScale;
+
+      if (state.turn !== perspectiveColor) {
+        engineScore *= -1;
+      }
+
+      return engineScore;
+    };
+  }
+
+  function resolveLeafEvaluator(options) {
+    if (options && typeof options.leafEvaluator === "function") {
+      return options.leafEvaluator;
+    }
+
+    if (options && options.valueModel) {
+      return createValueModelEvaluator(options.valueModel, options);
+    }
+
+    return null;
+  }
+
+  function resolveOrderingEvaluator(options) {
+    if (options && typeof options.orderingEvaluator === "function") {
+      return options.orderingEvaluator;
+    }
+
+    if (options && options.orderingValueModel) {
+      return createValueModelEvaluator(options.orderingValueModel, options);
+    }
+
+    return null;
   }
 
   function moveBonus(move, promotionChoice, nextAnalysis, rules) {
@@ -453,21 +617,43 @@
     return score;
   }
 
-  function orderCandidates(state, candidates, preferredCandidate) {
+  function orderCandidates(state, candidates, preferredCandidate, context) {
     var rules = state.rules;
+    var maximizing = !context || state.turn === context.rootColor;
+    var orderingWeight = context ? context.orderingWeight : 0;
+    var scoredCandidates = candidates.map(function scoreCandidate(candidate) {
+      var score = orderingScore(candidate, rules, preferredCandidate);
+      var nextState;
+      var modelScore;
 
-    return candidates.slice().sort(function compareCandidates(left, right) {
-      var rightScore = orderingScore(right, rules, preferredCandidate);
-      var leftScore = orderingScore(left, rules, preferredCandidate);
+      if (context && context.orderingEvaluator && orderingWeight !== 0) {
+        nextState = engine.applyMove(state, candidate.move, candidate.promotion);
+        modelScore = context.orderingEvaluator(nextState, context.rootColor);
 
-      if (rightScore !== leftScore) {
-        return rightScore - leftScore;
+        if (Number.isFinite(modelScore)) {
+          score += (maximizing ? 1 : -1) * modelScore * orderingWeight;
+        }
+      }
+
+      return {
+        candidate: candidate,
+        score: score
+      };
+    });
+
+    scoredCandidates.sort(function compareCandidates(left, right) {
+      if (right.score !== left.score) {
+        return right.score - left.score;
       }
 
       return compareCandidateMoves(
-        { move: left.move, promotion: left.promotion, rules: rules },
-        { move: right.move, promotion: right.promotion, rules: rules }
+        { move: left.candidate.move, promotion: left.candidate.promotion, rules: rules },
+        { move: right.candidate.move, promotion: right.candidate.promotion, rules: rules }
       );
+    });
+
+    return scoredCandidates.map(function unwrapCandidate(entry) {
+      return entry.candidate;
     });
   }
 
@@ -490,16 +676,62 @@
     return 3;
   }
 
-  function createSearchContext(state, candidateCount, options) {
+  function createSearchContext(state, candidateCount, options, leafEvaluator, orderingEvaluator) {
     var moveTime = Number(options && options.moveTime) || 0;
+    var blendWeight = Number(options && options.modelBlendWeight);
+    var orderingWeight = Number(options && options.orderingWeight);
+
+    if (!Number.isFinite(blendWeight)) {
+      blendWeight = DEFAULT_MODEL_BLEND;
+    }
+
+    if (!Number.isFinite(orderingWeight)) {
+      orderingWeight = 0.0025;
+    }
 
     return {
       rootColor: state.turn,
       deadlineMs: moveTime > 0 ? nowMs() + Math.max(40, moveTime - 5) : null,
       maxDepth: resolveMaxDepth(candidateCount, options),
       nodes: 0,
-      transposition: new Map()
+      transposition: new Map(),
+      leafEvaluator: leafEvaluator,
+      modelBlendWeight: Math.max(0, Math.min(1, blendWeight)),
+      orderingEvaluator: orderingEvaluator,
+      orderingWeight: orderingWeight
     };
+  }
+
+  function evaluateLeafState(state, context, analysis) {
+    var terminalScore = evaluateTerminalState(state, context.rootColor, analysis);
+    var modelScore;
+    var heuristicScore;
+
+    if (terminalScore !== null) {
+      return terminalScore;
+    }
+
+    heuristicScore = scoreHeuristicState(state, context.rootColor, analysis);
+
+    if (!context.leafEvaluator) {
+      return heuristicScore;
+    }
+
+    modelScore = context.leafEvaluator(state, context.rootColor, analysis);
+
+    if (!Number.isFinite(modelScore)) {
+      return heuristicScore;
+    }
+
+    if (context.modelBlendWeight >= 1) {
+      return modelScore;
+    }
+
+    if (context.modelBlendWeight <= 0) {
+      return heuristicScore;
+    }
+
+    return (modelScore * context.modelBlendWeight) + (heuristicScore * (1 - context.modelBlendWeight));
   }
 
   function alphaBeta(state, depth, alpha, beta, context, ply) {
@@ -524,7 +756,7 @@
     analysis = engine.analyzeState(state);
 
     if (depth <= 0 || analysis.status !== "active") {
-      bestScore = evaluateState(state, context.rootColor, analysis, ply);
+      bestScore = evaluateLeafState(state, context, analysis);
       context.transposition.set(key, {
         depth: depth,
         score: bestScore
@@ -532,10 +764,10 @@
       return bestScore;
     }
 
-    candidates = orderCandidates(state, expandMoveCandidates(state));
+    candidates = orderCandidates(state, expandMoveCandidates(state), null, context);
 
     if (candidates.length === 0) {
-      bestScore = evaluateState(state, context.rootColor, analysis, ply);
+      bestScore = evaluateLeafState(state, context, analysis);
       context.transposition.set(key, {
         depth: depth,
         score: bestScore
@@ -625,6 +857,8 @@
     var nextAnalysis;
     var score;
     var bestSelection;
+    var leafEvaluator;
+    var orderingEvaluator;
 
     if (candidates.length === 0) {
       return null;
@@ -645,11 +879,13 @@
       }
     }
 
-    context = createSearchContext(state, candidates.length, options);
+    leafEvaluator = resolveLeafEvaluator(options);
+    orderingEvaluator = resolveOrderingEvaluator(options);
+    context = createSearchContext(state, candidates.length, options, leafEvaluator, orderingEvaluator);
 
     for (depth = 1; depth <= context.maxDepth; depth += 1) {
       try {
-        orderedCandidates = orderCandidates(state, candidates, completedBestCandidate || heuristicCandidate);
+        orderedCandidates = orderCandidates(state, candidates, completedBestCandidate || heuristicCandidate, context);
         scoredCandidates = [];
 
         for (candidateIndex = 0; candidateIndex < orderedCandidates.length; candidateIndex += 1) {
@@ -831,13 +1067,79 @@
     };
   };
 
+  function ModelVariantEngine(options) {
+    var config = options || {};
+
+    this.requestToken = 0;
+    this.valueModel = config.valueModel || null;
+    this.orderingValueModel = config.orderingValueModel || null;
+    this.modelBlendWeight = Number(config.modelBlendWeight);
+    this.orderingWeight = Number(config.orderingWeight);
+    this.label = config.label || "Model Search";
+    this.id = config.id || "variant-model-search";
+  }
+
+  ModelVariantEngine.prototype.init = function init() {
+    return Promise.resolve();
+  };
+
+  ModelVariantEngine.prototype.requestMove = function requestMove(game, options) {
+    var self = this;
+    var token = self.requestToken + 1;
+    var mergedOptions = options || {};
+
+    self.requestToken = token;
+
+    return new Promise(function resolveModelSearchMove(resolve, reject) {
+      setTimeout(function runModelSearch() {
+        if (token !== self.requestToken) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          resolve(chooseSearchMove(game.state, {
+            moveTime: mergedOptions.moveTime,
+            maxDepth: mergedOptions.maxDepth,
+            valueModel: self.valueModel,
+            modelBlendWeight: self.modelBlendWeight,
+            orderingValueModel: self.orderingValueModel,
+            orderingWeight: self.orderingWeight
+          }));
+        } catch (error) {
+          reject(error);
+        }
+      }, 0);
+    });
+  };
+
+  ModelVariantEngine.prototype.reset = function reset() {
+    this.requestToken += 1;
+  };
+
+  ModelVariantEngine.prototype.getInfo = function getInfo() {
+    var self = this;
+
+    return {
+      id: self.id,
+      label: self.label,
+      family: "variant-hybrid",
+      supportsRules: function supportsRules() {
+        return true;
+      }
+    };
+  };
+
   return {
     PIECE_VALUES: PIECE_VALUES,
     StockfishAdapter: StockfishAdapter,
     HeuristicVariantEngine: HeuristicVariantEngine,
     SearchVariantEngine: SearchVariantEngine,
+    ModelVariantEngine: ModelVariantEngine,
     parseUciMove: parseUciMove,
     evaluateState: evaluateState,
+    scoreHeuristicState: scoreHeuristicState,
+    createValueModelEvaluator: createValueModelEvaluator,
     chooseHeuristicMove: chooseHeuristicMove,
     chooseSearchMove: chooseSearchMove,
     searchPosition: searchPosition

@@ -1,8 +1,6 @@
 # Chaos Chess
 
-*Rulebreak Edition*
-
-`Chaos Chess` is a browser-based chess variant sandbox where you can mix friendly fire, kamikaze captures, wrap-around movement, and experimental pawn rules into standard chess.
+`Chaos Chess` is a browser-based chess variant sandbox and AI/ML playground for nonstandard chess rules.
 
 ## Preview
 
@@ -10,19 +8,122 @@
 
 [Demo video](assets/chaos-chess-demo.webm)
 
-The current build includes five toggleable rule twists:
+## What Makes It Different
 
-- Friendly fire
-- Kamikaze captures
-- Wrap-around files
-- Double-direction pawns
-- Jump pawns
+Chaos Chess starts from standard chess, then lets you toggle five rule changes in any combination:
 
-The app still runs as static browser files. For the best experience, serve the folder locally with `make serve`.
+- Friendly Fire
+- Kamikaze Captures
+- Wrap-Around Files
+- Double-Direction Pawns
+- Jump Pawns
+
+That gives `2^5 = 32` possible rule combinations, including classic chess.
+
+## Why This Repo Exists
+
+This project has three goals:
+
+- build a fun playable chess-variant sandbox
+- build a custom AI stack for rules that standard chess engines do not support
+- show an end-to-end applied ML workflow: environment, search, data generation, training, evaluation, and eventual inference in the game
+
+## Why Stockfish Is Not Enough
+
+Stockfish is excellent for orthodox chess. It is not a drop-in engine for Chaos Chess.
+
+Why:
+
+- it is built for standard chess legality
+- it does not understand friendly fire, kamikaze captures, wrap-around movement, or the custom pawn rules
+- its evaluation assumptions are also tuned for standard chess, not for these variants
+
+So the current split is intentional:
+
+- classic chess uses Stockfish
+- variant chess uses a custom rule-aware search engine
+- ML experiments are built on top of that custom variant stack, not on top of Stockfish
+
+## Current AI Stack
+
+- `Human vs Human`
+  Two local players share the board.
+- `Stockfish`
+  Used for classic chess only.
+- `Variant Search`
+  A custom rule-aware search backend for Chaos Chess variants.
+- `Heuristic Baseline`
+  A weaker baseline used for comparisons and experiments.
+
+The browser UI is still primarily a playable product surface. Most of the ML work currently lives in the search, data, and training pipeline.
+
+## ML Strategy
+
+### One Shared Model, Not 32 Separate Models
+
+The current direction is **one shared model across all rule combinations**, not one model per variant preset.
+
+The model sees:
+
+- board features
+- castling rights
+- en passant state
+- side-to-move information
+- the five active rule flags
+
+That is a better design than training 32 separate models:
+
+- it keeps the system simpler
+- it encourages generalization across related rulesets
+- it is a stronger ML story than maintaining a pile of narrow specialist bots
+
+### Current Representation
+
+The current value-model pipeline uses an `842`-feature board encoding:
+
+- `768` piece-plane features
+- `1` side-to-move feature
+- `4` castling-right features
+- `64` en-passant-plane features
+- `5` rule-flag features
+
+Recent experiments also added a **canonical side-to-move encoding**, so learning runs no longer waste capacity relearning white/black symmetry from scratch.
+
+### Training Loop
+
+The current workflow is:
+
+1. Generate self-play positions with the custom search engine.
+2. Export those positions into train/validation value datasets.
+3. Train baseline models offline.
+4. Evaluate those models against held-out positions.
+5. Benchmark model-guided search against the handcrafted search baseline.
+
+Current baseline models:
+
+- `linear`
+- `mlp`
+
+### Current ML Status
+
+What works today:
+
+- self-play generation
+- dataset export
+- baseline value-model training
+- offline evaluation
+- model-guided search experiments
+
+What does **not** work yet:
+
+- the trained models do not yet beat the handcrafted variant search reliably in actual play
+- there is not yet a production-ready browser ML engine exposed in the UI
+
+That is important context: this repo already contains a real ML pipeline, but the learned evaluator is still experimental rather than clearly stronger than the handcrafted search.
 
 ## Running It
 
-Start a local server from the project root:
+Serve the app locally:
 
 ```bash
 make serve
@@ -30,178 +131,189 @@ make serve
 
 Then open `http://localhost:8000`.
 
-Computer play is split across two backends in the current build: Stockfish for classic chess and a prototype search engine for variant games. Serving the app over `http://` or `https://` is still the most reliable way to enable the Stockfish path.
-
-Run the automated rule tests with:
+Useful checks:
 
 ```bash
 make test
-```
-
-Run a quick syntax check on the browser scripts with:
-
-```bash
 make check
 ```
 
-Generate a small self-play dataset with:
+## ML Workflow
+
+Generate self-play data:
 
 ```bash
 make selfplay
 ```
 
-Run a quick search-vs-heuristic benchmark with:
+Export train/validation value datasets:
+
+```bash
+make export-dataset
+```
+
+Train a baseline value model:
+
+```bash
+make train-value
+```
+
+Evaluate a saved value model:
+
+```bash
+make eval-value
+```
+
+Run a benchmark:
 
 ```bash
 make benchmark
 ```
 
-## What The App Does
+The lower-level scripts are also useful directly when running experiments:
 
-- Renders a playable local two-player chess board in the browser.
-- Adds an optional computer opponent with two backends: Stockfish for classic rules and a prototype search engine for variant rules.
-- Lets you toggle any combination of the five variants, then restart the game with that rule set.
-- Preserves standard check, checkmate, stalemate, castling, en passant, and promotion logic where those concepts still make sense.
-- Uses a rules engine for legality. The UI only renders what the engine says is legal.
-- Tags move-log entries when a move used variant-specific behavior such as wrap-around, friendly fire, or a kamikaze capture.
-
-## Computer Play
-
-- Classic chess uses a browser-based Stockfish worker.
-- Variant games currently use a local prototype search engine that runs on top of the same legality engine as the UI.
-- Both backends use the same runtime contract, which is the starting point for future search and ML-backed engines.
-- The bundled Stockfish assets live in `vendor/stockfish/`, and the upstream GPL license text is included in `vendor/stockfish/Copying.txt`.
-- The longer AI roadmap and architecture live in [docs/ai-architecture.md](docs/ai-architecture.md).
-
-## ML Pipeline
-
-- `src/position-encoder.js` converts board states into a fixed 842-feature vector for future model training.
-- `scripts/selfplay.js` generates JSONL self-play data plus metadata using the current search backend.
-- `scripts/benchmark.js` runs small head-to-head matches so search and heuristic versions can be compared quantitatively.
-- Generated datasets are intended to feed the later value-model training stage described in [docs/ai-architecture.md](docs/ai-architecture.md).
+```bash
+node scripts/selfplay.js --games 40 --rules random --white search --black heuristic --encoding canonical
+node scripts/export-dataset.js --input ml/datasets/selfplay.jsonl --search-weight 1 --outcome-weight 0
+python3 scripts/train-value-model.py --model linear --epochs 20
+python3 scripts/eval-value-model.py --model ml/models/value-model.json
+node scripts/benchmark.js --games 12 --rules random --white search --black heuristic
+```
 
 ## Rule Semantics
 
-This section is the important part: each twist has a specific implementation, especially where your original idea leaves room for interpretation.
+Each rule has a specific implementation. The details matter.
 
-### 1. Friendly Fire
+### Friendly Fire
 
-Definition used in this project:
+Rules:
 
-- Any piece may capture an allied piece.
-- No move may capture an allied king.
-- The king is still allowed to move onto an allied non-king piece and remove it, as long as the destination square is not under attack.
-- Friendly-fire captures still obey normal self-check rules. If capturing your own piece exposes your king, the move is illegal.
+- any piece may capture an allied piece
+- no move may capture an allied king
+- a king may move onto an allied non-king piece and remove it, as long as the destination square is still safe
+- friendly-fire captures still obey normal self-check rules
 
-Tradeoff:
+Nuance:
 
-- This rule changes occupancy, not attack geometry. Your own pieces still block sliding attacks until they are actually removed.
+- this changes occupancy, not attack geometry
+- your own pieces still block sliding attacks until they are actually removed
 
-### 2. Kamikaze
+### Kamikaze
 
-Definition used in this project:
+Rules:
 
-- On any capture, the captured piece is removed.
-- The capturing piece is also removed immediately.
-- The destination square is left empty after the capture.
-- There is no blast radius. This is a self-destruct rule, not full atomic chess.
+- on any capture, the captured piece is removed
+- the capturing piece is also removed immediately
+- the destination square is left empty
+- there is no blast radius
 
-Tradeoff:
+Nuance:
 
-- Kings cannot make capturing moves in kamikaze mode, because a legal move may not destroy your own king.
-- A kamikaze capture can still be a strong defensive move if removing both pieces breaks an attack line.
+- kings cannot make capturing moves in kamikaze mode, because a legal move may not destroy your own king
+- a kamikaze capture can still be useful defensively if removing both pieces breaks an attack line
 
-### 3. Wrap-Around Files
+### Wrap-Around Files
 
-Definition used in this project:
+Rules:
 
-- Horizontal movement may cross between file `a` and file `h`.
-- This applies to normal piece movement, captures, knight jumps, and pawn diagonals.
-- Vertical wrapping does not exist. Only files wrap.
+- horizontal movement may cross between file `a` and file `h`
+- this applies to normal movement, captures, knight jumps, and pawn diagonals
+- only files wrap; ranks do not
 
-Important check nuance:
+Nuance:
 
-- The `a`/`h` seam is treated as a mobility seam, not an attack seam.
-- In practice: a move may wrap, but check detection never wraps.
-- So a rook on `a1` may move to `h1` in wrap mode, but it does not give check to a king on `h1` from `a1`.
+- the `a`/`h` seam is a mobility seam, not a check seam
+- a move may wrap, but check detection never wraps
+- example: a rook may move from `a1` to `h1` in wrap mode, but it does not give wrap-around check through that seam
 
-Tradeoff:
+### Double-Direction Pawns
 
-- This is intentionally asymmetric. It matches your “move through it, but do not check through it” requirement.
-- Because of that asymmetry, kings can sometimes stand in positions that would be threatened if wrap-around also counted as attack geometry.
+Rules:
 
-### 4. Double-Direction Pawns
+- pawns may move one square forward or one square backward
+- pawn captures are also mirrored forward and backward
+- promotion still only happens on the opponent's back rank
 
-Definition used in this project:
+Nuance:
 
-- Pawns may move one square forward or one square backward.
-- Pawn captures are also mirrored: they may capture diagonally forward or diagonally backward.
-- Promotion still only happens on the opponent’s back rank, exactly like normal chess.
+- this is a mirrored pawn model, not just backward non-capturing movement
+- that keeps movement and capture logic internally consistent
 
-Tradeoff:
+### Jump Pawns
 
-- This is implemented as a mirrored pawn move model, not just “backward non-capturing movement.”
-- That keeps the rule internally consistent and prevents odd cases where a pawn can retreat but not fight while retreating.
+Rules:
 
-### 5. Jump Pawns
+- a pawn may always move either one square or two squares in a straight line
+- the path must still be clear
+- the two-step is not restricted to the starting rank
 
-Definition used in this project:
+Nuance:
 
-- A pawn may always move either one square or two squares in a straight line.
-- The path must still be clear.
-- The two-step is not restricted to the starting rank.
-
-Tradeoff:
-
-- En passant still exists. Because a pawn can now double-step from anywhere, en passant opportunities can also arise from anywhere.
-- If double-direction pawns is also enabled, that logic applies in both allowed directions.
+- en passant still exists
+- because a pawn can now double-step from anywhere, en passant opportunities can also arise from anywhere
+- if double-direction pawns is also enabled, that logic applies in both directions
 
 ## Variant Interaction Notes
 
-These combinations matter:
-
-- `Friendly Fire + Check Rules`: removing your own blocker is legal only if your king remains safe afterward.
-- `Kamikaze + Promotion`: if a pawn captures on the last rank in kamikaze mode, it still explodes, so no promoted piece remains on the board.
-- `Wrap Around + Check`: movement may wrap, but kings never evaluate wrapped attacks as checks.
-- `Double-Direction Pawns + Jump Pawns`: pawns may move one or two squares in either allowed direction, with normal path-clear requirements.
-- `Jump Pawns + En Passant`: the engine stores the skipped square after any legal two-step pawn move, not just opening-rank moves.
+- `Friendly Fire + Check Rules`
+  Removing your own blocker is legal only if your king remains safe afterward.
+- `Kamikaze + Promotion`
+  If a pawn captures on the last rank in kamikaze mode, it still explodes, so no promoted piece remains.
+- `Wrap Around + Check`
+  Movement may wrap, but kings never evaluate wrapped attacks as checks.
+- `Double-Direction Pawns + Jump Pawns`
+  Pawns may move one or two squares in either allowed direction, with normal path-clear requirements.
+- `Jump Pawns + En Passant`
+  The engine stores the skipped square after any legal two-step pawn move, not just opening-rank moves.
 
 ## Standard Rules Kept
 
-The following standard rules are still active:
+The following standard rules still exist where they make sense:
 
-- Check and self-check filtering
-- Checkmate
-- Stalemate
-- Castling
-- En passant
-- Promotion
+- check and self-check filtering
+- checkmate
+- stalemate
+- castling
+- en passant
+- promotion
 
 Promotion is chosen dynamically when a pawn reaches the last rank.
 
-## Architecture
+## Repo Map
 
-- `src/engine.js` contains the rules engine, legality checks, state transitions, and move descriptions.
-- `src/classic-ai.js` wraps the browser-based Stockfish worker behind a small engine adapter.
-- `src/computer-engines.js` contains the shared computer-engine contract plus the current Stockfish, heuristic baseline, and variant search backends.
-- `src/app.js` handles DOM rendering, interaction, variant controls, and backend selection for computer play.
-- `vendor/stockfish/` contains the vendored Stockfish browser build used for classic computer play.
-- `tests/engine.test.js` and `tests/computer-engines.test.js` cover the rule layer and the first custom AI layer.
-- `docs/ai-architecture.md` defines the planned path from heuristic engine to search and ML-backed variants.
+- `src/engine.js`
+  Rules engine, legality checks, state transitions, move descriptions
+- `src/classic-ai.js`
+  Browser-side Stockfish adapter
+- `src/computer-engines.js`
+  Shared computer-engine layer, heuristic/search engines, model-guided search hooks
+- `src/position-encoder.js`
+  Feature encoding for ML experiments
+- `src/app.js`
+  Browser UI and interaction layer
+- `scripts/selfplay.js`
+  Self-play data generation
+- `scripts/export-dataset.js`
+  Dataset export for value-model training
+- `scripts/train-value-model.py`
+  Baseline offline training
+- `scripts/eval-value-model.py`
+  Offline evaluation
+- `scripts/benchmark.js`
+  Head-to-head engine benchmarking
 
-## Why The Engine Is Structured This Way
+## Docs
 
-The main design choice is that the variant behavior lives in move generation and state simulation, not in the UI:
+- [docs/README.md](docs/README.md)
+  Documentation index
+- [docs/ml-status.md](docs/ml-status.md)
+  What is already built
+- [docs/ai-architecture.md](docs/ai-architecture.md)
+  AI/runtime system design
+- [docs/ml-roadmap.md](docs/ml-roadmap.md)
+  What should happen next
 
-- The UI never “guesses” whether a move should be legal.
-- Check validation runs on the simulated post-move position, which is important for friendly-fire and kamikaze edge cases.
-- Wrap-around movement and wrap-free check detection are intentionally separated so the “can move through it but not check through it” rule stays explicit instead of hidden inside a special-case hack.
+## License And Dependencies
 
-## Things You May Want Next
-
-Good follow-ups if you keep iterating:
-
-- Add a custom position editor to test strange variant combinations faster.
-- Add saved presets for named modes.
-- Add move import/export or FEN-like snapshots for debugging.
-- Strengthen the prototype variant search backend and then plug a learned evaluator into the same interface.
+- The Stockfish browser assets live in `vendor/stockfish/`.
+- The upstream GPL license text is included in `vendor/stockfish/Copying.txt`.

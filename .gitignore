@@ -7,3 +7,5 @@ assets/*.mov
 ml/datasets/*.jsonl
 ml/datasets/*.json
 ml/benchmarks/*.json
+ml/models/*.json
+ml/reports/*.json

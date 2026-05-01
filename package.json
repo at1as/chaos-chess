@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test",
     "selfplay": "node scripts/selfplay.js",
-    "benchmark": "node scripts/benchmark.js"
+    "benchmark": "node scripts/benchmark.js",
+    "export-dataset": "node scripts/export-dataset.js"
   },
   "dependencies": {
     "stockfish": "^18.0.7"

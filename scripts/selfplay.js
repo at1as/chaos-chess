@@ -7,7 +7,8 @@ const {
   parseRulesSpec,
   playGame,
   ensureParentDir,
-  featureSchema
+  featureSchema,
+  loadModelPayload
 } = require("./ai-common.js");
 
 const args = parseArgs(process.argv.slice(2));
@@ -20,6 +21,15 @@ const blackBot = args.black || "search";
 const rulesSpec = args.rules || "random";
 const outputPath = path.resolve(process.cwd(), args.output || "ml/datasets/selfplay.jsonl");
 const metadataPath = path.resolve(process.cwd(), args.metadata || "ml/datasets/selfplay.metadata.json");
+const featureEncoding = args.encoding === "canonical" ? "canonical" : "absolute";
+const whiteModelPath = args["white-model"] || args.model || null;
+const blackModelPath = args["black-model"] || args.model || null;
+const whiteOrderingModelPath = args["white-ordering-model"] || null;
+const blackOrderingModelPath = args["black-ordering-model"] || null;
+const whiteBlend = args["white-blend"] ? Number(args["white-blend"]) : undefined;
+const blackBlend = args["black-blend"] ? Number(args["black-blend"]) : undefined;
+const whiteOrderingWeight = args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined;
+const blackOrderingWeight = args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined;
 
 ensureParentDir(outputPath);
 ensureParentDir(metadataPath);
@@ -34,6 +44,19 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
     rules,
     whiteBot,
     blackBot,
+    featureEncoding,
+    whiteOptions: whiteModelPath || whiteOrderingModelPath ? {
+      valueModel: whiteModelPath ? loadModelPayload(whiteModelPath) : undefined,
+      orderingValueModel: whiteOrderingModelPath ? loadModelPayload(whiteOrderingModelPath) : undefined,
+      modelBlendWeight: whiteBlend,
+      orderingWeight: whiteOrderingWeight
+    } : undefined,
+    blackOptions: blackModelPath || blackOrderingModelPath ? {
+      valueModel: blackModelPath ? loadModelPayload(blackModelPath) : undefined,
+      orderingValueModel: blackOrderingModelPath ? loadModelPayload(blackOrderingModelPath) : undefined,
+      modelBlendWeight: blackBlend,
+      orderingWeight: blackOrderingWeight
+    } : undefined,
     moveTime,
     maxDepth,
     maxPlies
@@ -54,6 +77,15 @@ fs.writeFileSync(metadataPath, JSON.stringify({
   games,
   whiteBot,
   blackBot,
+  whiteModelPath,
+  blackModelPath,
+  whiteOrderingModelPath,
+  blackOrderingModelPath,
+  whiteBlend: Number.isFinite(whiteBlend) ? whiteBlend : null,
+  blackBlend: Number.isFinite(blackBlend) ? blackBlend : null,
+  whiteOrderingWeight: Number.isFinite(whiteOrderingWeight) ? whiteOrderingWeight : null,
+  blackOrderingWeight: Number.isFinite(blackOrderingWeight) ? blackOrderingWeight : null,
+  featureEncoding,
   moveTime,
   maxDepth: maxDepth || null,
   maxPlies,
@@ -66,6 +98,11 @@ process.stdout.write([
   `Wrote ${games} self-play games to ${outputPath}`,
   `Metadata: ${metadataPath}`,
   `Bots: white=${whiteBot}, black=${blackBot}`,
+  whiteModelPath ? `White model: ${whiteModelPath}` : null,
+  blackModelPath ? `Black model: ${blackModelPath}` : null,
+  whiteOrderingModelPath ? `White ordering model: ${whiteOrderingModelPath}` : null,
+  blackOrderingModelPath ? `Black ordering model: ${blackOrderingModelPath}` : null,
+  `Feature encoding: ${featureEncoding}`,
   `Rules: ${rulesSpec}`,
   `Move time: ${moveTime}ms`
 ].join("\n") + "\n");

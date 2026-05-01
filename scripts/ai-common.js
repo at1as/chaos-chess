@@ -5,6 +5,7 @@ const computer = require("../src/computer-engines.js");
 const features = require("../src/position-encoder.js");
 
 const RULE_KEYS = Object.keys(chess.DEFAULT_RULES);
+const MODEL_CACHE = new Map();
 
 function parseArgs(argv) {
   const args = {};
@@ -82,6 +83,19 @@ function legalCandidates(game) {
   return candidates;
 }
 
+function loadModelPayload(modelPath) {
+  const resolvedPath = path.resolve(process.cwd(), modelPath);
+
+  if (MODEL_CACHE.has(resolvedPath)) {
+    return MODEL_CACHE.get(resolvedPath);
+  }
+
+  const payload = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
+
+  MODEL_CACHE.set(resolvedPath, payload);
+  return payload;
+}
+
 function chooseMove(bot, game, options) {
   if (bot === "heuristic") {
     return {
@@ -112,6 +126,17 @@ function chooseMove(bot, game, options) {
     };
   }
 
+  if (bot === "hybrid" || bot === "model" || bot === "model-search") {
+    if (!options || (!options.valueModel && !options.orderingValueModel)) {
+      throw new Error("Hybrid model search requires a valueModel or orderingValueModel payload.");
+    }
+
+    return {
+      ...computer.searchPosition(game.state, options),
+      engine: "hybrid"
+    };
+  }
+
   return {
     ...computer.searchPosition(game.state, options),
     engine: "search"
@@ -129,12 +154,15 @@ function outcomeForColor(summary, color) {
 function playGame(config) {
   const game = new chess.ChessGame(config.rules);
   const samples = [];
+  const featureEncoding = config.featureEncoding === "canonical" ? "canonical" : "absolute";
   let ply = 0;
 
   while (game.analysis.status === "active" && ply < config.maxPlies) {
     const turn = game.state.turn;
     const bot = turn === "w" ? config.whiteBot : config.blackBot;
+    const sideOptions = turn === "w" ? (config.whiteOptions || {}) : (config.blackOptions || {});
     const decision = chooseMove(bot, game, {
+      ...sideOptions,
       moveTime: config.moveTime,
       maxDepth: config.maxDepth
     });
@@ -150,7 +178,8 @@ function playGame(config) {
       turn,
       rules: chess.normalizeRules(game.state.rules),
       legalMoveCount: game.analysis.legalMoves.length,
-      featureVector: features.encodeStateVector(game.state),
+      featureEncoding,
+      featureVector: features.encodeStateVector(game.state, { encoding: featureEncoding }),
       searchScore: decision.score,
       searchDepth: decision.depth,
       searchNodes: decision.nodes,
@@ -209,6 +238,7 @@ module.exports = {
   RULE_KEYS,
   parseArgs,
   parseRulesSpec,
+  loadModelPayload,
   playGame,
   ensureParentDir,
   featureSchema: features.featureSchema

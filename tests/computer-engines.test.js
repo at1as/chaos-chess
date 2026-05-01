@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const chess = require("../src/engine.js");
 const computer = require("../src/computer-engines.js");
+const features = require("../src/position-encoder.js");
 
 function makeState(pieces, options = {}) {
   return chess.createStateFromPieces(pieces, {
@@ -93,6 +94,55 @@ test("searchPosition returns move metadata for pipeline use", () => {
   });
   assert.equal(typeof result.nodes, "number");
   assert.equal(result.depth >= 1, true);
+});
+
+test("value-model evaluator flips prediction into the requested perspective", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" }
+  ], {
+    turn: "b"
+  });
+  const vector = features.encodeStateVector(state);
+  const weights = new Array(vector.length).fill(0);
+  const sideToMoveIndex = 12 * 64;
+  const evaluator = computer.createValueModelEvaluator({
+    modelType: "linear",
+    inputSize: vector.length,
+    weights,
+    bias: -0.5
+  }, {
+    scoreScale: 600
+  });
+
+  weights[sideToMoveIndex] = 1;
+
+  assert.equal(Math.round(evaluator(state, "w")), 330);
+  assert.equal(Math.round(evaluator(state, "b")), -330);
+});
+
+test("searchPosition accepts a model-backed leaf evaluator", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "r", square: "a1" },
+    { color: "b", type: "q", square: "a4" }
+  ]);
+  const vector = features.encodeStateVector(state);
+  const result = computer.searchPosition(state, {
+    maxDepth: 1,
+    moveTime: 100,
+    valueModel: {
+      modelType: "linear",
+      inputSize: vector.length,
+      weights: new Array(vector.length).fill(0),
+      bias: 0
+    }
+  });
+
+  assert.ok(result);
+  assert.ok(result.move);
+  assert.equal(typeof result.nodes, "number");
 });
 
 test("stockfish adapter returns parsed move coordinates", async () => {

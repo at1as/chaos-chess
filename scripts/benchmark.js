@@ -6,7 +6,8 @@ const {
   parseArgs,
   parseRulesSpec,
   playGame,
-  ensureParentDir
+  ensureParentDir,
+  loadModelPayload
 } = require("./ai-common.js");
 
 const args = parseArgs(process.argv.slice(2));
@@ -18,6 +19,14 @@ const whiteBot = args.white || "search";
 const blackBot = args.black || "heuristic";
 const rulesSpec = args.rules || "random";
 const outputPath = args.output ? path.resolve(process.cwd(), args.output) : null;
+const whiteModelPath = args["white-model"] || args.model || null;
+const blackModelPath = args["black-model"] || args.model || null;
+const whiteOrderingModelPath = args["white-ordering-model"] || null;
+const blackOrderingModelPath = args["black-ordering-model"] || null;
+const whiteBlend = args["white-blend"] ? Number(args["white-blend"]) : undefined;
+const blackBlend = args["black-blend"] ? Number(args["black-blend"]) : undefined;
+const whiteOrderingWeight = args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined;
+const blackOrderingWeight = args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined;
 
 const summary = {
   games,
@@ -41,6 +50,18 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
     rules: parseRulesSpec(rulesSpec),
     whiteBot,
     blackBot,
+    whiteOptions: whiteModelPath || whiteOrderingModelPath ? {
+      valueModel: whiteModelPath ? loadModelPayload(whiteModelPath) : undefined,
+      orderingValueModel: whiteOrderingModelPath ? loadModelPayload(whiteOrderingModelPath) : undefined,
+      modelBlendWeight: whiteBlend,
+      orderingWeight: whiteOrderingWeight
+    } : undefined,
+    blackOptions: blackModelPath || blackOrderingModelPath ? {
+      valueModel: blackModelPath ? loadModelPayload(blackModelPath) : undefined,
+      orderingValueModel: blackOrderingModelPath ? loadModelPayload(blackOrderingModelPath) : undefined,
+      modelBlendWeight: blackBlend,
+      orderingWeight: blackOrderingWeight
+    } : undefined,
     moveTime,
     maxDepth,
     maxPlies
@@ -70,6 +91,10 @@ process.stdout.write([
   `Benchmark: ${whiteBot} (White) vs ${blackBot} (Black)`,
   `Games: ${games}`,
   `Rules: ${rulesSpec}`,
+  whiteModelPath ? `White model: ${whiteModelPath}` : null,
+  blackModelPath ? `Black model: ${blackModelPath}` : null,
+  whiteOrderingModelPath ? `White ordering model: ${whiteOrderingModelPath}` : null,
+  blackOrderingModelPath ? `Black ordering model: ${blackOrderingModelPath}` : null,
   `White wins: ${summary.whiteWins}`,
   `Black wins: ${summary.blackWins}`,
   `Draws: ${summary.draws}`,
