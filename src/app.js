@@ -12,13 +12,20 @@
   var variantForm = document.getElementById("variant-form");
   var computerSideSelect = document.getElementById("computer-side-select");
   var computerLevelSelect = document.getElementById("computer-level-select");
+  var computerEngineSelect = document.getElementById("computer-engine-select");
+  var engineInfoButton = document.getElementById("engine-info-button");
   var computerDisclaimer = document.getElementById("computer-disclaimer");
+  var computerOnlyControls = Array.prototype.slice.call(document.querySelectorAll(".computer-only-control"));
   var newGameButton = document.getElementById("new-game-button");
   var undoButton = document.getElementById("undo-button");
+  var statusCard = document.querySelector(".status-card");
+  var boardPanel = document.querySelector(".board-panel");
   var promotionPanel = document.getElementById("promotion-panel");
   var promotionText = document.getElementById("promotion-text");
   var promotionCancelButton = document.getElementById("promotion-cancel-button");
   var promotionButtons = Array.prototype.slice.call(document.querySelectorAll(".promotion-option"));
+  var engineInfoModal = document.getElementById("engine-info-modal");
+  var engineInfoCloseButton = document.getElementById("engine-info-close-button");
   var VARIANT_SETTINGS_STORAGE_KEY = "chaos-chess.variant-settings";
   var classicWorkerEngine = typeof window.Worker === "function" &&
     window.ChessPlusAI &&
@@ -48,6 +55,7 @@
   var pendingPromotion = null;
   var aiThinking = false;
   var aiRequestToken = 0;
+  var newGameFeedbackTimeout = null;
   var computerUnavailableReasons = {};
   var squares = [];
   var game = new engine.ChessGame(engine.DEFAULT_RULES);
@@ -107,11 +115,31 @@
     return {
       mode: opponentForm.elements.opponentMode.value === "computer" ? "computer" : "human",
       side: computerSideSelect.value === "w" ? "w" : "b",
-      moveTime: Number(computerLevelSelect.value) || 600
+      moveTime: Number(computerLevelSelect.value) || 600,
+      engineId: computerEngineSelect.value || "auto"
     };
   }
 
-  function getComputerBackendForRules(rules) {
+  function getBackendById(backendId) {
+    switch (backendId) {
+      case "classic-stockfish":
+        return stockfishComputer;
+      case "variant-search-prototype":
+        return variantSearchComputer;
+      case "prototype-heuristic":
+        return heuristicVariantComputer;
+      default:
+        return null;
+    }
+  }
+
+  function backendSupportsRules(backend, rules) {
+    var info = getBackendInfo(backend);
+
+    return Boolean(info && typeof info.supportsRules === "function" && info.supportsRules(rules));
+  }
+
+  function getDefaultComputerBackendForRules(rules) {
     if (engine.isClassicRules(rules) && stockfishComputer) {
       return stockfishComputer;
     }
@@ -125,6 +153,17 @@
     }
 
     return engine.isClassicRules(rules) ? stockfishComputer : null;
+  }
+
+  function getComputerBackendForRules(rules) {
+    var settings = currentOpponentSettings();
+    var requestedBackend = settings.engineId === "auto" ? null : getBackendById(settings.engineId);
+
+    if (requestedBackend) {
+      return backendSupportsRules(requestedBackend, rules) ? requestedBackend : null;
+    }
+
+    return getDefaultComputerBackendForRules(rules);
   }
 
   function getAnyComputerBackend() {
@@ -147,16 +186,76 @@
     return backend ? backend.getInfo() : null;
   }
 
-  function backendLabel(info, includeExperimentalTag) {
+  function backendLabel(info) {
     if (!info) {
       return "Unavailable";
     }
 
-    if (includeExperimentalTag && info.family === "variant-search") {
-      return info.label + " (Experimental)";
+    return info.label;
+  }
+
+  function engineSelectionSummary(rules) {
+    var settings = currentOpponentSettings();
+    var requestedBackend = getBackendById(settings.engineId);
+    var defaultBackend = getDefaultComputerBackendForRules(rules);
+
+    if (settings.engineId === "auto") {
+      return "Auto (" + backendLabel(getBackendInfo(defaultBackend)) + ")";
     }
 
-    return info.label;
+    if (!requestedBackend) {
+      return "Unavailable";
+    }
+
+    return backendLabel(getBackendInfo(requestedBackend));
+  }
+
+  function engineGuidanceText(engineId) {
+    if (engineId === "prototype-heuristic") {
+      return "Heuristic Baseline is the weakest engine and mainly useful for quick experiments.";
+    }
+
+    if (engineId === "classic-stockfish" || engineId === "variant-search-prototype") {
+      return "Think Time controls search budget. Higher values usually improve move quality.";
+    }
+
+    return "Auto uses Stockfish for classic chess and Variant Search for variants. Think Time affects the search engines.";
+  }
+
+  function showNewGameFeedback() {
+    if (newGameFeedbackTimeout) {
+      window.clearTimeout(newGameFeedbackTimeout);
+    }
+
+    newGameButton.textContent = "New Game Started";
+    newGameButton.classList.add("action-confirm");
+
+    if (statusCard) {
+      statusCard.classList.remove("reset-flash");
+      void statusCard.offsetWidth;
+      statusCard.classList.add("reset-flash");
+    }
+
+    if (boardPanel) {
+      boardPanel.classList.remove("reset-flash");
+      void boardPanel.offsetWidth;
+      boardPanel.classList.add("reset-flash");
+    }
+
+    newGameFeedbackTimeout = window.setTimeout(function resetNewGameFeedback() {
+      newGameButton.textContent = "Start New Game";
+      newGameButton.classList.remove("action-confirm");
+
+      if (statusCard) {
+        statusCard.classList.remove("reset-flash");
+      }
+
+      if (boardPanel) {
+        boardPanel.classList.remove("reset-flash");
+      }
+
+      newGameFeedbackTimeout = null;
+    }, 1100);
   }
 
   function getBackendError(backend) {
@@ -290,17 +389,28 @@
 
   function updateOpponentUI() {
     var settings = currentOpponentSettings();
+    var selectedRules = currentRulesFromForm();
     var activeBackend = getActiveComputerBackend();
     var selectedBackend = getSelectedComputerBackend();
     var activeInfo = getBackendInfo(activeBackend);
     var selectedInfo = getBackendInfo(selectedBackend);
     var controlsEnabled = Boolean(getAnyComputerBackend()) && settings.mode === "computer";
-    var selectedEngineLabel = backendLabel(selectedInfo, true);
+    var selectedEngineLabel = engineSelectionSummary(selectedRules);
+    var stockfishOption = computerEngineSelect.querySelector('option[value="classic-stockfish"]');
+    var showComputerControls = settings.mode === "computer";
 
     computerModeInput.disabled = !getAnyComputerBackend();
     computerSideSelect.disabled = !controlsEnabled;
     computerLevelSelect.disabled = !controlsEnabled;
+    computerEngineSelect.disabled = !controlsEnabled;
+    stockfishOption.disabled = !stockfishComputer || !engine.isClassicRules(selectedRules);
     computerModeCopy.textContent = "Engine: " + selectedEngineLabel;
+    computerModeCopy.hidden = !showComputerControls;
+    computerModeCopy.style.display = showComputerControls ? "" : "none";
+    computerOnlyControls.forEach(function toggleComputerOnlyControl(element) {
+      element.hidden = !showComputerControls;
+      element.style.display = showComputerControls ? "" : "none";
+    });
 
     if (!getAnyComputerBackend()) {
       computerDisclaimer.textContent = "Computer play is unavailable in this browser.";
@@ -309,6 +419,11 @@
 
     if (settings.mode !== "computer") {
       computerDisclaimer.textContent = "Choose a side and start a new game.";
+      return;
+    }
+
+    if (!selectedBackend) {
+      computerDisclaimer.textContent = "The selected engine does not support this ruleset.";
       return;
     }
 
@@ -329,18 +444,16 @@
 
     if (game.analysis.status !== "active") {
       computerDisclaimer.textContent = "Start a new game to play against " +
-        backendLabel(selectedInfo, true) + ".";
+        backendLabel(selectedInfo) + ".";
       return;
     }
 
-    if (activeInfo) {
-      computerDisclaimer.textContent = "Current game is using " +
-        backendLabel(activeInfo, true) +
-        " as " +
-        (settings.side === "w" ? "White" : "Black") +
-        ".";
+    if (!activeBackend) {
+      computerDisclaimer.textContent = "The current game does not support the selected engine. Start a new game or choose another engine.";
       return;
     }
+
+    computerDisclaimer.textContent = engineGuidanceText(settings.engineId);
   }
 
   function renderMoveLog() {
@@ -372,6 +485,29 @@
     }
 
     promotionPanel.hidden = true;
+  }
+
+  function closeEngineInfo() {
+    document.body.classList.remove("dialog-open");
+
+    if (typeof engineInfoModal.close === "function" && engineInfoModal.open) {
+      engineInfoModal.close();
+      return;
+    }
+
+    engineInfoModal.hidden = true;
+  }
+
+  function openEngineInfo() {
+    document.body.classList.add("dialog-open");
+
+    if (typeof engineInfoModal.showModal === "function") {
+      engineInfoModal.showModal();
+    } else {
+      engineInfoModal.hidden = false;
+    }
+
+    engineInfoCloseButton.focus();
   }
 
   function showPromotionChooser(move) {
@@ -665,6 +801,7 @@
     hidePromotionChooser();
     clearSelection();
     lastMove = null;
+    showNewGameFeedback();
     render();
     maybeRunComputerTurn();
   }
@@ -739,8 +876,23 @@
     }
   }
 
+  function onEngineInfoDialogClick(event) {
+    if (event.target === engineInfoModal) {
+      closeEngineInfo();
+    }
+  }
+
+  function onEngineInfoDialogCancel() {
+    closeEngineInfo();
+  }
+
   function onVariantFormChange() {
     saveRules(currentRulesFromForm());
+
+    if (!getSelectedComputerBackend() && currentOpponentSettings().engineId !== "auto") {
+      computerEngineSelect.value = "auto";
+    }
+
     render();
   }
 
@@ -763,6 +915,8 @@
   undoButton.addEventListener("click", undoMove);
   opponentForm.addEventListener("change", onOpponentFormChange);
   variantForm.addEventListener("change", onVariantFormChange);
+  engineInfoButton.addEventListener("click", openEngineInfo);
+  engineInfoCloseButton.addEventListener("click", closeEngineInfo);
   promotionCancelButton.addEventListener("click", cancelPromotion);
   promotionButtons.forEach(function bindPromotionButton(button) {
     button.addEventListener("click", function onPromotionButtonClick() {
@@ -771,6 +925,8 @@
   });
   promotionPanel.addEventListener("cancel", onPromotionDialogCancel);
   promotionPanel.addEventListener("click", onPromotionDialogClick);
+  engineInfoModal.addEventListener("cancel", onEngineInfoDialogCancel);
+  engineInfoModal.addEventListener("click", onEngineInfoDialogClick);
 
   buildAxisLabels();
   initializeVariantSettings();

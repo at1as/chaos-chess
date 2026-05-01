@@ -77,6 +77,24 @@ test("search engine finds a mate in one when it exists", () => {
   });
 });
 
+test("searchPosition returns move metadata for pipeline use", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "r", square: "a1" },
+    { color: "b", type: "q", square: "a4" }
+  ]);
+  const result = computer.searchPosition(state, { maxDepth: 2, moveTime: 1000 });
+
+  assert.deepEqual(result.move, {
+    from: chess.algebraicToCoord("a1"),
+    to: chess.algebraicToCoord("a4"),
+    promotion: null
+  });
+  assert.equal(typeof result.nodes, "number");
+  assert.equal(result.depth >= 1, true);
+});
+
 test("stockfish adapter returns parsed move coordinates", async () => {
   const adapter = new computer.StockfishAdapter({
     classicEngine: {

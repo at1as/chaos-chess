@@ -4,3 +4,6 @@
 node_modules/
 coverage/
 assets/*.mov
+ml/datasets/*.jsonl
+ml/datasets/*.json
+ml/benchmarks/*.json

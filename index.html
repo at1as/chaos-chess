@@ -10,11 +10,10 @@
     <div class="page-shell">
       <main class="app-frame">
         <section class="hero-panel">
-          <p class="eyebrow">Rulebreak Edition</p>
           <h1>Chaos Chess</h1>
           <p class="hero-copy">
-            A rule-twisting chess sandbox with five switchable variants: friendly fire,
-            kamikaze captures, wrap-around files, two-way pawns, and jump pawns.
+            A chess sandbox with friendly fire, kamikaze captures, wrap-around files,
+            and experimental pawn rules.
           </p>
           <div class="action-row">
             <button id="new-game-button" class="primary-button" type="button">Start New Game</button>
@@ -25,6 +24,16 @@
             <p id="status-text" class="status-text">White to move.</p>
             <p id="variant-summary" class="variant-summary">Classic rules.</p>
           </div>
+          <details class="collapsible-panel inline-log-panel">
+            <summary class="panel-summary">
+              <div class="panel-header">
+                <p class="label">Move Log</p>
+              </div>
+            </summary>
+            <div class="panel-body">
+              <ol id="move-log" class="move-log"></ol>
+            </div>
+          </details>
         </section>
 
         <section class="board-panel">
@@ -59,10 +68,10 @@
                   <input type="radio" name="opponentMode" value="computer">
                   <span class="toggle-copy">
                     <strong>Play vs Computer</strong>
-                    <small id="computer-mode-copy">Engine: Stockfish</small>
+                    <small id="computer-mode-copy" hidden>Engine: Stockfish</small>
                   </span>
                 </label>
-                <div class="control-row">
+                <div class="control-row computer-only-control" hidden>
                   <label class="control-stack" for="computer-side-select">
                     Computer Side
                     <select id="computer-side-select">
@@ -79,7 +88,21 @@
                     </select>
                   </label>
                 </div>
-                <p id="computer-disclaimer" class="panel-copy">
+                <div class="control-row control-row-single computer-only-control" hidden>
+                  <label class="control-stack" for="computer-engine-select">
+                    Engine
+                    <select id="computer-engine-select">
+                      <option value="auto" selected>Auto</option>
+                      <option value="classic-stockfish">Stockfish</option>
+                      <option value="variant-search-prototype">Variant Search</option>
+                      <option value="prototype-heuristic">Heuristic Baseline</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="control-row control-row-single computer-only-control" hidden>
+                  <button id="engine-info-button" class="inline-button" type="button">Engine Info</button>
+                </div>
+                <p id="computer-disclaimer" class="panel-copy computer-only-control" hidden>
                   Choose a side and start a new game.
                 </p>
               </form>
@@ -133,18 +156,6 @@
               </form>
             </div>
           </details>
-
-          <details class="panel collapsible-panel">
-            <summary class="panel-summary">
-              <div class="panel-header">
-                <p class="label">Move Log</p>
-                <p class="panel-copy">Variant tags are shown inline when they matter.</p>
-              </div>
-            </summary>
-            <div class="panel-body">
-              <ol id="move-log" class="move-log"></ol>
-            </div>
-          </details>
         </aside>
       </main>
     </div>
@@ -165,6 +176,78 @@
           <button class="promotion-option" type="button" data-piece="n">Knight</button>
         </div>
         <button id="promotion-cancel-button" class="promotion-cancel" type="button">Cancel</button>
+      </div>
+    </dialog>
+
+    <dialog
+      id="engine-info-modal"
+      class="promotion-modal info-modal"
+      aria-labelledby="engine-info-title"
+      aria-describedby="engine-info-copy"
+    >
+      <div class="promotion-dialog info-dialog">
+        <p id="engine-info-title" class="label">Engine Info</p>
+        <div id="engine-info-copy" class="info-copy">
+          <p class="panel-copy">
+            Chaos Chess currently exposes three computer engines plus an automatic mode. They do not all
+            work the same way, and they do not all support the same rules.
+          </p>
+          <div class="info-section">
+            <div class="info-heading">
+              <strong>Auto</strong>
+              <span class="info-badge neutral">Mode</span>
+            </div>
+            <p class="panel-copy">
+              Picks the default engine for the selected ruleset. Classic games use Stockfish. Variant games use
+              the custom Variant Search engine.
+            </p>
+          </div>
+          <div class="info-section">
+            <div class="info-heading">
+              <strong>Stockfish</strong>
+              <span class="info-badge strong">Strength: High</span>
+            </div>
+            <p class="panel-copy">
+              A strong classic chess engine running in the browser. It only supports standard chess rules in this app.
+              It does not understand friendly fire, kamikaze, wrap-around movement, or the custom pawn rules.
+            </p>
+          </div>
+          <div class="info-section">
+            <div class="info-heading">
+              <strong>Variant Search</strong>
+              <span class="info-badge medium">Strength: LOW</span>
+            </div>
+            <p class="panel-copy">
+              A custom rule-aware search engine built on top of the Chaos Chess legality engine. It works across the
+              variant combinations, but it is still early and much weaker than Stockfish on classic chess.
+            </p>
+          </div>
+          <div class="info-section">
+            <div class="info-heading">
+              <strong>Heuristic Baseline</strong>
+              <span class="info-badge light">Strength: VERY LOW</span>
+            </div>
+            <p class="panel-copy">
+              A simple evaluator with no deeper search. It is fast and useful as a baseline for experiments, but it is
+              the weakest option strategically.
+            </p>
+          </div>
+          <div class="info-section">
+            <strong>Think Time</strong>
+            <p class="panel-copy">
+              Think Time controls the search budget for Stockfish and Variant Search. Higher values usually improve move
+              quality but increase waiting time. The Heuristic Baseline mostly ignores this setting.
+            </p>
+          </div>
+          <div class="info-section">
+            <strong>Current limitations</strong>
+            <p class="panel-copy">
+              Variant Search is still early-stage, browser-only, and not yet ML-backed. Its current role is to provide
+              legal, interesting moves while the stronger search and learning pipeline evolve.
+            </p>
+          </div>
+        </div>
+        <button id="engine-info-close-button" class="promotion-cancel" type="button">Close</button>
       </div>
     </dialog>
 

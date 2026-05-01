@@ -44,6 +44,18 @@ Run a quick syntax check on the browser scripts with:
 make check
 ```
 
+Generate a small self-play dataset with:
+
+```bash
+make selfplay
+```
+
+Run a quick search-vs-heuristic benchmark with:
+
+```bash
+make benchmark
+```
+
 ## What The App Does
 
 - Renders a playable local two-player chess board in the browser.
@@ -60,6 +72,13 @@ make check
 - Both backends use the same runtime contract, which is the starting point for future search and ML-backed engines.
 - The bundled Stockfish assets live in `vendor/stockfish/`, and the upstream GPL license text is included in `vendor/stockfish/Copying.txt`.
 - The longer AI roadmap and architecture live in [docs/ai-architecture.md](docs/ai-architecture.md).
+
+## ML Pipeline
+
+- `src/position-encoder.js` converts board states into a fixed 842-feature vector for future model training.
+- `scripts/selfplay.js` generates JSONL self-play data plus metadata using the current search backend.
+- `scripts/benchmark.js` runs small head-to-head matches so search and heuristic versions can be compared quantitatively.
+- Generated datasets are intended to feed the later value-model training stage described in [docs/ai-architecture.md](docs/ai-architecture.md).
 
 ## Rule Semantics
 

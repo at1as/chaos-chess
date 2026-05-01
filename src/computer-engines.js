@@ -603,15 +603,20 @@
       }
     }
 
-    return bestCandidate || fallbackCandidate;
+    return {
+      candidate: bestCandidate || fallbackCandidate || null,
+      score: bestCandidate ? bestScore : null
+    };
   }
 
-  function chooseSearchMove(state, options) {
+  function searchPosition(state, options) {
     var candidates = expandMoveCandidates(state);
     var heuristicChoice;
     var heuristicCandidate = null;
     var context;
     var completedBestCandidate = null;
+    var completedBestScore = null;
+    var completedDepth = 0;
     var depth;
     var orderedCandidates;
     var scoredCandidates;
@@ -619,6 +624,7 @@
     var nextState;
     var nextAnalysis;
     var score;
+    var bestSelection;
 
     if (candidates.length === 0) {
       return null;
@@ -663,7 +669,10 @@
           });
         }
 
-        completedBestCandidate = selectBestCandidate(state, scoredCandidates, heuristicCandidate);
+        bestSelection = selectBestCandidate(state, scoredCandidates, heuristicCandidate);
+        completedBestCandidate = bestSelection.candidate;
+        completedBestScore = bestSelection.score;
+        completedDepth = depth;
       } catch (error) {
         if (isSearchTimeout(error)) {
           break;
@@ -674,14 +683,32 @@
     }
 
     if (!completedBestCandidate) {
-      return heuristicChoice;
+      return {
+        move: heuristicChoice,
+        score: null,
+        depth: 0,
+        nodes: context.nodes,
+        fallback: "heuristic"
+      };
     }
 
     return {
-      from: { x: completedBestCandidate.move.from.x, y: completedBestCandidate.move.from.y },
-      to: { x: completedBestCandidate.move.to.x, y: completedBestCandidate.move.to.y },
-      promotion: completedBestCandidate.promotion
+      move: {
+        from: { x: completedBestCandidate.move.from.x, y: completedBestCandidate.move.from.y },
+        to: { x: completedBestCandidate.move.to.x, y: completedBestCandidate.move.to.y },
+        promotion: completedBestCandidate.promotion
+      },
+      score: completedBestScore,
+      depth: completedDepth,
+      nodes: context.nodes,
+      fallback: null
     };
+  }
+
+  function chooseSearchMove(state, options) {
+    var result = searchPosition(state, options);
+
+    return result ? result.move : null;
   }
 
   function StockfishAdapter(options) {
@@ -812,6 +839,7 @@
     parseUciMove: parseUciMove,
     evaluateState: evaluateState,
     chooseHeuristicMove: chooseHeuristicMove,
-    chooseSearchMove: chooseSearchMove
+    chooseSearchMove: chooseSearchMove,
+    searchPosition: searchPosition
   };
 }));
