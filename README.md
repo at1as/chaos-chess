@@ -4,7 +4,11 @@
 
 `Chaos Chess` is a browser-based chess variant sandbox where you can mix friendly fire, kamikaze captures, wrap-around movement, and experimental pawn rules into standard chess.
 
+## Preview
+
 ![Chaos Chess screenshot](assets/chaos-chess-screenshot.png)
+
+[Demo video](assets/chaos-chess-demo.webm)
 
 The current build includes five toggleable rule twists:
 
