@@ -8,6 +8,7 @@
   var moveLog = document.getElementById("move-log");
   var opponentForm = document.getElementById("opponent-form");
   var computerModeInput = opponentForm.querySelector('input[name="opponentMode"][value="computer"]');
+  var computerModeCopy = document.getElementById("computer-mode-copy");
   var variantForm = document.getElementById("variant-form");
   var computerSideSelect = document.getElementById("computer-side-select");
   var computerLevelSelect = document.getElementById("computer-level-select");
@@ -19,12 +20,27 @@
   var promotionCancelButton = document.getElementById("promotion-cancel-button");
   var promotionButtons = Array.prototype.slice.call(document.querySelectorAll(".promotion-option"));
   var VARIANT_SETTINGS_STORAGE_KEY = "chaos-chess.variant-settings";
-  var classicEngine = typeof window.Worker === "function" &&
+  var classicWorkerEngine = typeof window.Worker === "function" &&
     window.ChessPlusAI &&
     window.ChessPlusAI.ClassicEngine
     ? new window.ChessPlusAI.ClassicEngine({
       workerUrl: "./vendor/stockfish/stockfish-18-lite-single.js"
     })
+    : null;
+  var stockfishComputer = classicWorkerEngine &&
+    window.ChessPlusComputer &&
+    window.ChessPlusComputer.StockfishAdapter
+    ? new window.ChessPlusComputer.StockfishAdapter({
+      classicEngine: classicWorkerEngine
+    })
+    : null;
+  var variantSearchComputer = window.ChessPlusComputer &&
+    window.ChessPlusComputer.SearchVariantEngine
+    ? new window.ChessPlusComputer.SearchVariantEngine()
+    : null;
+  var heuristicVariantComputer = window.ChessPlusComputer &&
+    window.ChessPlusComputer.HeuristicVariantEngine
+    ? new window.ChessPlusComputer.HeuristicVariantEngine()
     : null;
   var selectedSquare = null;
   var legalMoves = [];
@@ -32,7 +48,7 @@
   var pendingPromotion = null;
   var aiThinking = false;
   var aiRequestToken = 0;
-  var computerUnavailableReason = null;
+  var computerUnavailableReasons = {};
   var squares = [];
   var game = new engine.ChessGame(engine.DEFAULT_RULES);
 
@@ -95,16 +111,70 @@
     };
   }
 
-  function isClassicVariantSelection() {
-    return engine.isClassicRules(currentRulesFromForm());
+  function getComputerBackendForRules(rules) {
+    if (engine.isClassicRules(rules) && stockfishComputer) {
+      return stockfishComputer;
+    }
+
+    if (variantSearchComputer) {
+      return variantSearchComputer;
+    }
+
+    if (heuristicVariantComputer) {
+      return heuristicVariantComputer;
+    }
+
+    return engine.isClassicRules(rules) ? stockfishComputer : null;
   }
 
-  function setOpponentMode(mode) {
-    var normalizedMode = mode === "computer" ? "computer" : "human";
+  function getAnyComputerBackend() {
+    return stockfishComputer || variantSearchComputer || heuristicVariantComputer;
+  }
 
-    Array.prototype.forEach.call(opponentForm.elements.opponentMode, function setRadioState(input) {
-      input.checked = input.value === normalizedMode;
-    });
+  function getSelectedComputerBackend() {
+    return getComputerBackendForRules(currentRulesFromForm());
+  }
+
+  function getActiveComputerBackend() {
+    if (!isComputerModeEnabled()) {
+      return null;
+    }
+
+    return getComputerBackendForRules(game.state.rules);
+  }
+
+  function getBackendInfo(backend) {
+    return backend ? backend.getInfo() : null;
+  }
+
+  function backendLabel(info, includeExperimentalTag) {
+    if (!info) {
+      return "Unavailable";
+    }
+
+    if (includeExperimentalTag && info.family === "variant-search") {
+      return info.label + " (Experimental)";
+    }
+
+    return info.label;
+  }
+
+  function getBackendError(backend) {
+    var info = getBackendInfo(backend);
+
+    return info ? computerUnavailableReasons[info.id] || null : null;
+  }
+
+  function clearComputerErrors() {
+    computerUnavailableReasons = {};
+  }
+
+  function clearBackendError(backend) {
+    var info = getBackendInfo(backend);
+
+    if (info && computerUnavailableReasons[info.id]) {
+      delete computerUnavailableReasons[info.id];
+    }
   }
 
   function buildAxisLabels() {
@@ -153,12 +223,13 @@
 
   function renderStatus() {
     var analysis = game.analysis;
+    var backendInfo = getBackendInfo(getActiveComputerBackend());
     var turnName = game.state.turn === "w" ? "White" : "Black";
 
     if (pendingPromotion) {
       statusText.textContent = (pendingPromotion.color === "w" ? "White" : "Black") + " must choose a promotion piece.";
     } else if (aiThinking) {
-      statusText.textContent = turnName + " computer is thinking.";
+      statusText.textContent = turnName + " " + (backendInfo ? backendInfo.label : "computer") + " is thinking.";
     } else if (analysis.status === "checkmate") {
       statusText.textContent = (analysis.winner === "w" ? "White" : "Black") + " wins by checkmate.";
     } else if (analysis.status === "stalemate") {
@@ -171,7 +242,7 @@
       statusText.textContent = turnName + " to move.";
     }
 
-    variantSummary.textContent = opponentSummaryText() + " • " + engine.rulesSummary(game.state.rules);
+    variantSummary.textContent = opponentSummaryText() + "\n" + engine.rulesSummary(game.state.rules);
     undoButton.disabled = !pendingPromotion && game.history.length === 0;
   }
 
@@ -184,28 +255,30 @@
   }
 
   function canUseComputerPlayer() {
-    return Boolean(classicEngine) &&
-      !computerUnavailableReason &&
-      isComputerModeEnabled() &&
-      engine.isClassicRules(game.state.rules);
+    var backend = getActiveComputerBackend();
+
+    return Boolean(backend) &&
+      !getBackendError(backend) &&
+      isComputerModeEnabled();
   }
 
   function opponentSummaryText() {
     var settings = currentOpponentSettings();
+    var backend = getActiveComputerBackend();
+    var backendInfo = getBackendInfo(backend);
 
     if (settings.mode !== "computer") {
       return "Human vs Human";
     }
 
-    if (!classicEngine) {
+    if (!backend || getBackendError(backend)) {
       return "Computer Unavailable";
     }
 
-    if (!engine.isClassicRules(game.state.rules)) {
-      return "Computer Selected (Classic Only)";
-    }
-
-    return "Vs Computer (" + (settings.side === "w" ? "White" : "Black") + ")";
+    return "Vs Computer (" +
+      (settings.side === "w" ? "White" : "Black") +
+      " • " + backendInfo.label +
+      ")";
   }
 
   function isComputerTurn() {
@@ -217,50 +290,57 @@
 
   function updateOpponentUI() {
     var settings = currentOpponentSettings();
-    var engineSupported = Boolean(classicEngine);
-    var classicSelection = isClassicVariantSelection();
-    var controlsEnabled = engineSupported && classicSelection && settings.mode === "computer";
+    var activeBackend = getActiveComputerBackend();
+    var selectedBackend = getSelectedComputerBackend();
+    var activeInfo = getBackendInfo(activeBackend);
+    var selectedInfo = getBackendInfo(selectedBackend);
+    var controlsEnabled = Boolean(getAnyComputerBackend()) && settings.mode === "computer";
+    var selectedEngineLabel = backendLabel(selectedInfo, true);
 
-    computerModeInput.disabled = !engineSupported || !classicSelection;
+    computerModeInput.disabled = !getAnyComputerBackend();
     computerSideSelect.disabled = !controlsEnabled;
     computerLevelSelect.disabled = !controlsEnabled;
+    computerModeCopy.textContent = "Engine: " + selectedEngineLabel;
 
-    if (!engineSupported) {
+    if (!getAnyComputerBackend()) {
       computerDisclaimer.textContent = "Computer play is unavailable in this browser.";
       return;
     }
 
-    if (!classicSelection) {
-      computerDisclaimer.textContent = "Variant rules are selected. Computer play is disabled until you switch back to classic rules.";
-      return;
-    }
-
-    if (computerUnavailableReason) {
-      computerDisclaimer.textContent = computerUnavailableReason;
-      return;
-    }
-
     if (settings.mode !== "computer") {
-      computerDisclaimer.textContent = "Computer play uses Stockfish and is limited to classic chess in this build.";
+      computerDisclaimer.textContent = "Choose a side and start a new game.";
       return;
     }
 
-    if (!engine.isClassicRules(game.state.rules)) {
-      computerDisclaimer.textContent = "The current game uses variant rules. Start a new classic game to enable computer play.";
+    if (activeBackend && getBackendError(activeBackend)) {
+      computerDisclaimer.textContent = getBackendError(activeBackend);
       return;
     }
 
-    if (aiThinking) {
-      computerDisclaimer.textContent = "Computer is thinking.";
+    if (selectedBackend && getBackendError(selectedBackend)) {
+      computerDisclaimer.textContent = getBackendError(selectedBackend);
+      return;
+    }
+
+    if (aiThinking && activeInfo) {
+      computerDisclaimer.textContent = activeInfo.label + " is thinking.";
       return;
     }
 
     if (game.analysis.status !== "active") {
-      computerDisclaimer.textContent = "Start a new classic game to play against the computer.";
+      computerDisclaimer.textContent = "Start a new game to play against " +
+        backendLabel(selectedInfo, true) + ".";
       return;
     }
 
-    computerDisclaimer.textContent = "Computer is playing " + (settings.side === "w" ? "White" : "Black") + " with Stockfish.";
+    if (activeInfo) {
+      computerDisclaimer.textContent = "Current game is using " +
+        backendLabel(activeInfo, true) +
+        " as " +
+        (settings.side === "w" ? "White" : "Black") +
+        ".";
+      return;
+    }
   }
 
   function renderMoveLog() {
@@ -400,72 +480,70 @@
     aiRequestToken += 1;
     aiThinking = false;
 
-    if (classicEngine && classicEngine.worker) {
-      classicEngine.reset();
+    if (stockfishComputer) {
+      stockfishComputer.reset();
+    }
+
+    if (heuristicVariantComputer) {
+      heuristicVariantComputer.reset();
+    }
+
+    if (variantSearchComputer) {
+      variantSearchComputer.reset();
     }
   }
 
-  function parseUciMove(uci) {
-    var from;
-    var to;
+  function getComputerFailureMessage(backend) {
+    var backendInfo = getBackendInfo(backend);
 
-    if (!uci || uci === "(none)" || uci.length < 4) {
-      return null;
+    if (backendInfo &&
+      backendInfo.id === "classic-stockfish" &&
+      window.location.protocol === "file:") {
+      return "Stockfish needs the app to be served over http:// or https://. Use make serve to enable it locally.";
     }
 
-    from = engine.algebraicToCoord(uci.slice(0, 2));
-    to = engine.algebraicToCoord(uci.slice(2, 4));
-
-    if (!from || !to) {
-      return null;
+    if (backendInfo) {
+      return backendInfo.label + " could not start. Start a new game to retry.";
     }
 
-    return {
-      from: from,
-      to: to,
-      promotion: uci.length > 4 ? uci.slice(4, 5).toLowerCase() : null
-    };
+    return "Computer play could not start. Start a new game to retry.";
   }
 
-  function getComputerFailureMessage() {
-    if (window.location.protocol === "file:") {
-      return "Computer play needs the app to be served over http:// or https://. Use make serve to enable it locally.";
-    }
+  function handleComputerFailure(backend, error) {
+    var backendInfo = getBackendInfo(backend);
 
-    return "Computer play could not start. Continue locally or start a new classic game to retry.";
-  }
-
-  function handleComputerFailure(error) {
     if (window.console && typeof window.console.error === "function") {
       window.console.error(error);
     }
 
-    computerUnavailableReason = getComputerFailureMessage();
+    if (backendInfo) {
+      computerUnavailableReasons[backendInfo.id] = getComputerFailureMessage(backend);
+    }
+
     aiThinking = false;
 
-    if (classicEngine && classicEngine.worker) {
-      classicEngine.reset();
+    if (backend) {
+      backend.reset();
     }
   }
 
-  function applyComputerMoveFromUci(uci) {
-    var parsedMove = parseUciMove(uci);
+  function applyComputerMove(moveChoice) {
     var result;
 
-    if (!parsedMove) {
-      throw new Error("Stockfish returned an invalid move.");
+    if (!moveChoice || !moveChoice.from || !moveChoice.to) {
+      throw new Error("Computer backend returned an invalid move.");
     }
 
     result = game.move(
-      parsedMove.from.x,
-      parsedMove.from.y,
-      parsedMove.to.x,
-      parsedMove.to.y,
-      parsedMove.promotion
+      moveChoice.from.x,
+      moveChoice.from.y,
+      moveChoice.to.x,
+      moveChoice.to.y,
+      moveChoice.promotion
     );
 
     if (!result.ok) {
-      throw new Error("Stockfish returned an illegal move.");
+      throw new Error("Computer backend returned an illegal move.");
     }
 
     lastMove = {
@@ -477,18 +555,20 @@
   }
 
   function maybeRunComputerTurn() {
+    var backend = getActiveComputerBackend();
     var requestToken;
 
-    if (!isComputerTurn() || aiThinking) {
+    if (!backend || !isComputerTurn() || aiThinking) {
       return;
     }
 
+    clearBackendError(backend);
     requestToken = aiRequestToken + 1;
     aiRequestToken = requestToken;
     aiThinking = true;
     render();
 
-    classicEngine.requestBestMove(game.getUciMoves(), {
+    backend.requestMove(game, {
       moveTime: currentOpponentSettings().moveTime
     }).then(function onBestMove(bestMove) {
       if (requestToken !== aiRequestToken) {
@@ -502,13 +582,13 @@
         return;
       }
 
-      applyComputerMoveFromUci(bestMove);
+      applyComputerMove(bestMove);
     }).catch(function onComputerError(error) {
       if (requestToken !== aiRequestToken) {
         return;
       }
 
-      handleComputerFailure(error);
+      handleComputerFailure(backend, error);
       render();
     });
   }
@@ -579,7 +659,7 @@
     var rules = currentRulesFromForm();
 
     cancelComputerTurn();
-    computerUnavailableReason = null;
+    clearComputerErrors();
     saveRules(rules);
     game.setRulesAndReset(rules);
     hidePromotionChooser();
@@ -660,25 +740,14 @@
   }
 
   function onVariantFormChange() {
-    var wasComputerMode = isComputerModeEnabled();
-
     saveRules(currentRulesFromForm());
-
-    if (!isClassicVariantSelection()) {
-      setOpponentMode("human");
-
-      if (wasComputerMode || aiThinking) {
-        cancelComputerTurn();
-      }
-    }
-
     render();
   }
 
   function onOpponentFormChange() {
     clearSelection();
     cancelComputerTurn();
-    computerUnavailableReason = null;
+    clearComputerErrors();
     render();
     maybeRunComputerTurn();
   }

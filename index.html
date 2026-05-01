@@ -44,7 +44,6 @@
             <summary class="panel-summary">
               <div class="panel-header">
                 <p class="label">Opponent</p>
-                <p class="panel-copy">Classic computer play only.</p>
               </div>
             </summary>
             <div class="panel-body">
@@ -60,7 +59,7 @@
                   <input type="radio" name="opponentMode" value="computer">
                   <span class="toggle-copy">
                     <strong>Play vs Computer</strong>
-                    <small>Available only for active classic games in Phase 1.</small>
+                    <small id="computer-mode-copy">Engine: Stockfish</small>
                   </span>
                 </label>
                 <div class="control-row">
@@ -81,7 +80,7 @@
                   </label>
                 </div>
                 <p id="computer-disclaimer" class="panel-copy">
-                  Computer play uses Stockfish and is limited to classic chess in this build.
+                  Choose a side and start a new game.
                 </p>
               </form>
             </div>
@@ -171,6 +170,7 @@
 
     <script src="./src/engine.js"></script>
     <script src="./src/classic-ai.js"></script>
+    <script src="./src/computer-engines.js"></script>
     <script src="./src/app.js"></script>
   </body>
   </html>

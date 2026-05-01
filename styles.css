@@ -103,6 +103,10 @@ h1 {
   line-height: 1.5;
 }
 
+.variant-summary {
+  white-space: pre-line;
+}
+
 .action-row {
   display: flex;
   gap: 12px;
