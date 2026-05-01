@@ -1,0 +1,9 @@
+{
+  "name": "chaos-chess",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A browser-based chess variant sandbox where you can mix friendly fire, kamikaze captures, wrap-around movement, and experimental pawn rules into standard chess.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

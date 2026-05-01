@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chaos Chess | Rulebreak Edition</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <main class="app-frame">
+        <section class="hero-panel">
+          <p class="eyebrow">Rulebreak Edition</p>
+          <h1>Chaos Chess</h1>
+          <p class="hero-copy">
+            A rule-twisting chess sandbox with five switchable variants: friendly fire,
+            kamikaze captures, wrap-around files, two-way pawns, and jump pawns.
+          </p>
+          <div class="action-row">
+            <button id="new-game-button" class="primary-button" type="button">Start New Game</button>
+            <button id="undo-button" class="ghost-button" type="button">Undo</button>
+          </div>
+          <div class="status-card">
+            <p class="label">Status</p>
+            <p id="status-text" class="status-text">White to move.</p>
+            <p id="variant-summary" class="variant-summary">Classic rules.</p>
+          </div>
+        </section>
+
+        <section class="board-panel">
+          <div class="board-header">
+            <div>
+              <p class="label">Board</p>
+              <p class="board-subtitle">Click a piece, then click a highlighted square.</p>
+            </div>
+            <label class="promotion-control" for="promotion-select">
+              Promotion
+              <select id="promotion-select">
+                <option value="q">Queen</option>
+                <option value="r">Rook</option>
+                <option value="b">Bishop</option>
+                <option value="n">Knight</option>
+              </select>
+            </label>
+          </div>
+          <div class="board-wrap">
+            <div class="file-labels top" aria-hidden="true"></div>
+            <div class="board-grid-frame">
+              <div class="rank-labels left" aria-hidden="true"></div>
+              <div id="board" class="board" aria-label="Chess board"></div>
+              <div class="rank-labels right" aria-hidden="true"></div>
+            </div>
+            <div class="file-labels bottom" aria-hidden="true"></div>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="panel-header">
+              <p class="label">Variants</p>
+              <p class="panel-copy">Changes apply when you start a new game.</p>
+            </div>
+            <form id="variant-form" class="variant-form">
+              <label class="toggle-card">
+                <input type="checkbox" name="friendlyFire">
+                <span>Friendly Fire</span>
+                <small>Pieces may capture allied pieces, but never an allied king.</small>
+              </label>
+              <label class="toggle-card">
+                <input type="checkbox" name="kamikaze">
+                <span>Kamikaze</span>
+                <small>The capturing piece also disappears after any capture.</small>
+              </label>
+              <label class="toggle-card">
+                <input type="checkbox" name="wrapAround">
+                <span>Wrap Around</span>
+                <small>Moves may cross between files a and h, but checks never cross that seam.</small>
+              </label>
+              <label class="toggle-card">
+                <input type="checkbox" name="doubleDirectionPawns">
+                <span>Double-Direction Pawns</span>
+                <small>Pawns may move and capture both forward and backward.</small>
+              </label>
+              <label class="toggle-card">
+                <input type="checkbox" name="jumpPawns">
+                <span>Jump Pawns</span>
+                <small>Pawns may always move one or two squares if the path stays clear.</small>
+              </label>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <p class="label">Move Log</p>
+              <p class="panel-copy">Variant tags are shown inline when they matter.</p>
+            </div>
+            <ol id="move-log" class="move-log"></ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./src/engine.js"></script>
+    <script src="./src/app.js"></script>
+  </body>
+  </html>
