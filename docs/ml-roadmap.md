@@ -157,9 +157,10 @@ The next concrete implementation order should be:
 
 1. generate larger teacher datasets from deeper search
 2. move training to a stronger stack such as PyTorch, ideally using Apple Silicon acceleration
-3. compare canonical encodings, target designs, and model sizes
+3. compare teacher-data quality, target designs, and model sizes
 4. improve hybrid integration through ordering and blended evaluation
-5. benchmark on larger match sets, not just tiny smoke comparisons
-6. expose the model-backed engine in the browser UI only after it is credibly useful
+5. benchmark on larger color-balanced match sets, not just tiny smoke comparisons
+6. explore policy-style supervision or richer search targets if value-only parity persists
+7. expose the model-backed engine in the browser UI only after it is credibly useful
 
 That is the shortest path from today's codebase to a genuine hybrid ML engine.

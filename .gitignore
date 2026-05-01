@@ -1,6 +1,7 @@
 *.swp
 *.swo
 .DS_Store
+.venv/
 node_modules/
 coverage/
 assets/*.mov
@@ -8,4 +9,5 @@ ml/datasets/*.jsonl
 ml/datasets/*.json
 ml/benchmarks/*.json
 ml/models/*.json
+ml/models/*.pt
 ml/reports/*.json

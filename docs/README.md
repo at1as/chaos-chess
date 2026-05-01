@@ -10,9 +10,12 @@ This repo now has a small AI/ML documentation set so the project reads clearly a
   What is already built today: search, feature encoding, self-play, and benchmarks.
 - [ML Roadmap](ml-roadmap.md)
   The next implementation steps from supervised value models to hybrid search plus ML.
+- [Experiment Log](experiment-log.md)
+  Public notes on benchmark runs, methodology changes, and what the latest results actually mean.
 
 ## Recommended Reading Order
 
 1. Start with [ML Status](ml-status.md) to see the current state of the repo.
 2. Read [AI Architecture Spec](ai-architecture.md) for the long-term shape.
 3. Use [ML Roadmap](ml-roadmap.md) for the next milestones and experiment plan.
+4. Use [Experiment Log](experiment-log.md) for concrete results and current observations.

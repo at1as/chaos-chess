@@ -354,6 +354,47 @@
     return total;
   }
 
+  function evaluateDenseModel(modelSpec, vector) {
+    var layerWeights = modelSpec.layerWeights || [];
+    var layerBiases = modelSpec.layerBiases || [];
+    var outputWeights = modelSpec.outputWeights || [];
+    var outputBias = Number(modelSpec.outputBias) || 0;
+    var activations = vector.slice();
+    var layerIndex;
+    var neuronIndex;
+    var inputIndex;
+    var nextActivations;
+    var total;
+
+    for (layerIndex = 0; layerIndex < layerWeights.length; layerIndex += 1) {
+      nextActivations = [];
+
+      for (neuronIndex = 0; neuronIndex < layerWeights[layerIndex].length; neuronIndex += 1) {
+        total = Number((layerBiases[layerIndex] || [])[neuronIndex]) || 0;
+
+        for (
+          inputIndex = 0;
+          inputIndex < activations.length && inputIndex < layerWeights[layerIndex][neuronIndex].length;
+          inputIndex += 1
+        ) {
+          total += Number(layerWeights[layerIndex][neuronIndex][inputIndex]) * activations[inputIndex];
+        }
+
+        nextActivations.push(Math.tanh(total));
+      }
+
+      activations = nextActivations;
+    }
+
+    total = outputBias;
+
+    for (inputIndex = 0; inputIndex < activations.length && inputIndex < outputWeights.length; inputIndex += 1) {
+      total += Number(outputWeights[inputIndex]) * activations[inputIndex];
+    }
+
+    return total;
+  }
+
   function createValueModelEvaluator(modelSpec, options) {
     var normalizedModel = normalizeValueModelSpec(modelSpec);
     var config = options || {};
@@ -390,6 +431,8 @@
         prediction = evaluateLinearModel(normalizedModel, vector);
       } else if (normalizedModel.modelType === "mlp") {
         prediction = evaluateMlpModel(normalizedModel, vector);
+      } else if (normalizedModel.modelType === "dense") {
+        prediction = evaluateDenseModel(normalizedModel, vector);
       } else {
         throw new Error("Unsupported value model type: " + normalizedModel.modelType);
       }

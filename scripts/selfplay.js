@@ -8,7 +8,8 @@ const {
   playGame,
   ensureParentDir,
   featureSchema,
-  loadModelPayload
+  loadModelPayload,
+  createSeededRandom
 } = require("./ai-common.js");
 
 const args = parseArgs(process.argv.slice(2));
@@ -30,6 +31,8 @@ const whiteBlend = args["white-blend"] ? Number(args["white-blend"]) : undefined
 const blackBlend = args["black-blend"] ? Number(args["black-blend"]) : undefined;
 const whiteOrderingWeight = args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined;
 const blackOrderingWeight = args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined;
+const seed = args.seed || "chaos-chess-selfplay";
+const randomFn = createSeededRandom(seed);
 
 ensureParentDir(outputPath);
 ensureParentDir(metadataPath);
@@ -38,13 +41,14 @@ const output = fs.createWriteStream(outputPath, { encoding: "utf8" });
 const summaries = [];
 
 for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
-  const rules = parseRulesSpec(rulesSpec);
+  const rules = parseRulesSpec(rulesSpec, randomFn);
   const result = playGame({
     gameId: `selfplay-${gameIndex + 1}`,
     rules,
     whiteBot,
     blackBot,
     featureEncoding,
+    randomFn,
     whiteOptions: whiteModelPath || whiteOrderingModelPath ? {
       valueModel: whiteModelPath ? loadModelPayload(whiteModelPath) : undefined,
       orderingValueModel: whiteOrderingModelPath ? loadModelPayload(whiteOrderingModelPath) : undefined,
@@ -86,6 +90,7 @@ fs.writeFileSync(metadataPath, JSON.stringify({
   whiteOrderingWeight: Number.isFinite(whiteOrderingWeight) ? whiteOrderingWeight : null,
   blackOrderingWeight: Number.isFinite(blackOrderingWeight) ? blackOrderingWeight : null,
   featureEncoding,
+  seed,
   moveTime,
   maxDepth: maxDepth || null,
   maxPlies,
@@ -103,6 +108,7 @@ process.stdout.write([
   whiteOrderingModelPath ? `White ordering model: ${whiteOrderingModelPath}` : null,
   blackOrderingModelPath ? `Black ordering model: ${blackOrderingModelPath}` : null,
   `Feature encoding: ${featureEncoding}`,
+  `Seed: ${seed}`,
   `Rules: ${rulesSpec}`,
   `Move time: ${moveTime}ms`
 ].join("\n") + "\n");

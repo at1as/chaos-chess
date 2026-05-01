@@ -13,6 +13,7 @@ What exists today:
 - self-play data generation
 - dataset export for supervised value learning
 - zero-dependency baseline training and evaluation scripts
+- a PyTorch training path for larger experiments
 - a benchmark harness for quantitative comparisons
 
 That means the repo already covers environment design, search-based data generation, feature encoding, baseline model training, offline evaluation, and hybrid-search experiments. The missing piece is a learned evaluator that is clearly useful in actual play.
@@ -158,6 +159,7 @@ Primary files:
 
 - `scripts/export-dataset.js`
 - `scripts/train-value-model.py`
+- `scripts/train-value-model-torch.py`
 - `scripts/eval-value-model.py`
 - `scripts/value_model.py`
 
@@ -167,12 +169,15 @@ What exists today:
 - search scores are normalized into `[-1, 1]`
 - outcome labels are blended into the training target
 - the training path supports a `linear` model and an `mlp` model
+- the Torch path also supports a deeper `dense` model with configurable hidden-layer stacks
+- the same JSON model format can now be exported from both the plain-Python trainer and the PyTorch trainer
 - the evaluation path reports `MSE`, `RMSE`, `MAE`, `Pearson`, and non-draw outcome sign accuracy
 - experiments can now test learned guidance both as leaf evaluation and as move ordering
 
 Important implementation details:
 
 - the current training scripts are dependency-free Python
+- the newer PyTorch path is the practical route for larger Apple Silicon experiments
 - exported datasets retain ruleset identifiers so metrics can be broken down by rule combination
 - the saved model format is JSON, which keeps the first checkpoint format inspectable and easy to version
 
@@ -199,12 +204,15 @@ Evidence:
 
 - canonical side-to-move encoding improved validation correlation
 - deeper search teachers improved target quality
+- search-vs-search teacher data with full search-score coverage improved validation quality again
 - linear and MLP baselines both fit the value targets meaningfully
+- the best offline model so far is the `exp4` Torch `mlp` trained on full-coverage canonical search-vs-search data, with validation correlation around `0.918`
 
 But:
 
 - the learned evaluators do not yet beat the handcrafted variant search reliably in gameplay benchmarks
-- ordering-only guidance is promising as an idea, but not yet clearly stronger in practice
+- ordering-only guidance is still the safest integration mode, but recent color-balanced sweeps kept it roughly at parity with plain search rather than clearly ahead
+- a deeper stacked `dense` network did not beat the simpler one-hidden-layer Torch `mlp` on the same `exp4` teacher set
 
 So the project is past the "toy ML scaffolding" stage, but not yet at the "model-backed engine is clearly better" stage.
 
@@ -215,6 +223,7 @@ Relevant tests:
 - `tests/computer-engines.test.js`
 - `tests/position-encoder.test.js`
 - `tests/engine.test.js`
+- `tests/benchmark-sweep.test.js`
 
 What is covered today:
 
@@ -224,6 +233,21 @@ What is covered today:
 - encoder vector length and feature placement
 
 This matters for ML work because the training pipeline is only as trustworthy as the legality and encoding layers beneath it.
+
+## Experiment Tracking
+
+Primary files:
+
+- `scripts/benchmark-sweep.js`
+- `docs/experiment-log.md`
+
+What exists today:
+
+- a color-balanced sweep runner for candidate-vs-reference engine comparisons
+- reproducible seeded rulesets across both color assignments
+- a public markdown log for recording benchmark outputs and observations
+
+This matters because tiny asymmetric benchmark runs are too noisy to guide ML decisions. The repo now includes a cleaner path for testing whether a model is actually helping or just fitting labels offline.
 
 ## Reproducible Commands
 

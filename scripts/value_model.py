@@ -260,6 +260,50 @@ class MLPValueModel:
         return instance
 
 
+class DenseValueModel:
+    model_type = "dense"
+
+    def predict(self, features: List[float]) -> float:
+        activations = features[:]
+
+        for layer_weights, layer_biases in zip(self.layer_weights, self.layer_biases):
+            next_activations: List[float] = []
+
+            for row, bias in zip(layer_weights, layer_biases):
+                total = bias
+
+                for weight, feature in zip(row, activations):
+                    total += weight * feature
+
+                next_activations.append(math.tanh(total))
+
+            activations = next_activations
+
+        prediction = self.output_bias
+
+        for weight, activation in zip(self.output_weights, activations):
+            prediction += weight * activation
+
+        return prediction
+
+    @classmethod
+    def from_dict(cls, payload: Dict):
+        instance = cls.__new__(cls)
+        instance.input_size = payload["inputSize"]
+        instance.hidden_sizes = [int(value) for value in payload["hiddenSizes"]]
+        instance.layer_weights = [
+            [[float(value) for value in row] for row in layer]
+            for layer in payload["layerWeights"]
+        ]
+        instance.layer_biases = [
+            [float(value) for value in layer]
+            for layer in payload["layerBiases"]
+        ]
+        instance.output_weights = [float(value) for value in payload["outputWeights"]]
+        instance.output_bias = float(payload["outputBias"])
+        return instance
+
+
 def create_model(model_type: str, input_size: int, seed: int, hidden_size: int = 64):
     rng = random.Random(seed)
 
@@ -284,6 +328,9 @@ def load_model(path: str):
 
     if model_type == "mlp":
         return MLPValueModel.from_dict(model_payload), payload
+
+    if model_type == "dense":
+        return DenseValueModel.from_dict(model_payload), payload
 
     raise ValueError(f"Unsupported model type: {model_type}")
 

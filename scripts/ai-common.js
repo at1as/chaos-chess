@@ -3,6 +3,7 @@ const path = require("node:path");
 const chess = require("../src/engine.js");
 const computer = require("../src/computer-engines.js");
 const features = require("../src/position-encoder.js");
+const { createSeededRandom } = require("./ml-data.js");
 
 const RULE_KEYS = Object.keys(chess.DEFAULT_RULES);
 const MODEL_CACHE = new Map();
@@ -32,23 +33,24 @@ function parseArgs(argv) {
   return args;
 }
 
-function sampleRules() {
+function sampleRules(randomFn) {
   const rules = {};
+  const nextRandom = typeof randomFn === "function" ? randomFn : Math.random;
 
   for (const key of RULE_KEYS) {
-    rules[key] = Math.random() >= 0.5;
+    rules[key] = nextRandom() >= 0.5;
   }
 
   return chess.normalizeRules(rules);
 }
 
-function parseRulesSpec(spec) {
+function parseRulesSpec(spec, randomFn) {
   if (!spec || spec === "classic") {
     return chess.DEFAULT_RULES;
   }
 
   if (spec === "random") {
-    return sampleRules();
+    return sampleRules(randomFn);
   }
 
   return chess.normalizeRules(spec.split(",").reduce((rules, rawKey) => {
@@ -110,7 +112,8 @@ function chooseMove(bot, game, options) {
 
   if (bot === "random") {
     const candidates = legalCandidates(game);
-    const candidate = candidates[Math.floor(Math.random() * candidates.length)] || null;
+    const nextRandom = options && typeof options.randomFn === "function" ? options.randomFn : Math.random;
+    const candidate = candidates[Math.floor(nextRandom() * candidates.length)] || null;
 
     return {
       move: candidate ? {
@@ -163,6 +166,7 @@ function playGame(config) {
     const sideOptions = turn === "w" ? (config.whiteOptions || {}) : (config.blackOptions || {});
     const decision = chooseMove(bot, game, {
       ...sideOptions,
+      randomFn: config.randomFn,
       moveTime: config.moveTime,
       maxDepth: config.maxDepth
     });
@@ -236,6 +240,7 @@ function ensureParentDir(outputPath) {
 
 module.exports = {
   RULE_KEYS,
+  createSeededRandom,
   parseArgs,
   parseRulesSpec,
   loadModelPayload,

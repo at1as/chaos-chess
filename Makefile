@@ -2,7 +2,7 @@
 
 PORT ?= 8000
 
-.PHONY: help serve test check selfplay benchmark export-dataset train-value eval-value
+.PHONY: help serve test check selfplay benchmark benchmark-sweep export-dataset train-value train-value-torch eval-value setup-torch
 
 help:
 	@printf '%s\n' \
@@ -13,8 +13,11 @@ help:
 		'  make selfplay       Generate a small self-play dataset' \
 		'  make export-dataset Build train/validation value datasets' \
 		'  make train-value    Train the first value model' \
+		'  make train-value-torch Train a PyTorch value model (.venv)' \
 		'  make eval-value     Evaluate a saved value model' \
+		'  make setup-torch    Install PyTorch deps into .venv' \
 		'  make benchmark      Compare search and heuristic bots' \
+		'  make benchmark-sweep Run a color-balanced AI benchmark sweep' \
 		'' \
 		'Optional variables:' \
 		'  PORT=9000           Override the local server port'
@@ -35,8 +38,9 @@ check:
 	node --check scripts/ml-data.js
 	node --check scripts/selfplay.js
 	node --check scripts/benchmark.js
+	node --check scripts/benchmark-sweep.js
 	node --check scripts/export-dataset.js
-	PYTHONPYCACHEPREFIX=/tmp/chess-plus-pycache python3 -m py_compile scripts/value_model.py scripts/train-value-model.py scripts/eval-value-model.py
+	PYTHONPYCACHEPREFIX=/tmp/chess-plus-pycache python3 -m py_compile scripts/value_model.py scripts/train-value-model.py scripts/eval-value-model.py scripts/train-value-model-torch.py
 
 selfplay:
 	node scripts/selfplay.js
@@ -44,11 +48,21 @@ selfplay:
 benchmark:
 	node scripts/benchmark.js
 
+benchmark-sweep:
+	node scripts/benchmark-sweep.js
+
 export-dataset:
 	node scripts/export-dataset.js
 
 train-value:
 	python3 scripts/train-value-model.py
 
+train-value-torch:
+	./.venv/bin/python scripts/train-value-model-torch.py
+
 eval-value:
 	python3 scripts/eval-value-model.py
+
+setup-torch:
+	test -d .venv || python3 -m venv .venv
+	./.venv/bin/python -m pip install -r requirements-torch.txt

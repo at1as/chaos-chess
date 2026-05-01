@@ -103,6 +103,12 @@ Current baseline models:
 
 - `linear`
 - `mlp`
+- `dense` (stacked hidden layers in the Torch path)
+
+There are now two training paths:
+
+- a dependency-light reference trainer in plain Python
+- a `PyTorch` trainer that can use `MPS` automatically on Apple Silicon when the backend is available
 
 ### Current ML Status
 
@@ -158,6 +164,18 @@ Train a baseline value model:
 make train-value
 ```
 
+Install the Torch stack into a local virtualenv:
+
+```bash
+make setup-torch
+```
+
+Train with PyTorch:
+
+```bash
+make train-value-torch
+```
+
 Evaluate a saved value model:
 
 ```bash
@@ -170,15 +188,26 @@ Run a benchmark:
 make benchmark
 ```
 
+Run a color-balanced sweep when you want a less noisy engine comparison:
+
+```bash
+make benchmark-sweep
+```
+
 The lower-level scripts are also useful directly when running experiments:
 
 ```bash
 node scripts/selfplay.js --games 40 --rules random --white search --black heuristic --encoding canonical
 node scripts/export-dataset.js --input ml/datasets/selfplay.jsonl --search-weight 1 --outcome-weight 0
 python3 scripts/train-value-model.py --model linear --epochs 20
+./.venv/bin/python scripts/train-value-model-torch.py --model mlp --hidden-size 64 --epochs 24
+./.venv/bin/python scripts/train-value-model-torch.py --model dense --hidden-sizes 128,64 --epochs 20
 python3 scripts/eval-value-model.py --model ml/models/value-model.json
 node scripts/benchmark.js --games 12 --rules random --white search --black heuristic
+node scripts/benchmark-sweep.js --candidate hybrid --reference search --games-per-seed 8 --seeds s1,s2,s3
 ```
+
+For public experiment notes and observations, see [docs/experiment-log.md](docs/experiment-log.md).
 
 ## Rule Semantics
 

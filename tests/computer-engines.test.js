@@ -145,6 +145,53 @@ test("searchPosition accepts a model-backed leaf evaluator", () => {
   assert.equal(typeof result.nodes, "number");
 });
 
+test("searchPosition accepts a dense multi-layer value model", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "r", square: "a1" },
+    { color: "b", type: "q", square: "a4" }
+  ]);
+  const vector = features.encodeStateVector(state);
+  const result = computer.searchPosition(state, {
+    maxDepth: 1,
+    moveTime: 100,
+    valueModel: {
+      modelType: "dense",
+      inputSize: vector.length,
+      hiddenSizes: [2, 2],
+      layerWeights: [
+        [
+          (() => {
+            const row = new Array(vector.length).fill(0);
+            row[0] = 1;
+            return row;
+          })(),
+          (() => {
+            const row = new Array(vector.length).fill(0);
+            row[1] = 1;
+            return row;
+          })()
+        ],
+        [
+          [0.5, -0.25],
+          [-0.5, 0.25]
+        ]
+      ],
+      layerBiases: [
+        [0, 0],
+        [0, 0]
+      ],
+      outputWeights: [1, -1],
+      outputBias: 0
+    }
+  });
+
+  assert.ok(result);
+  assert.ok(result.move);
+  assert.equal(typeof result.nodes, "number");
+});
+
 test("stockfish adapter returns parsed move coordinates", async () => {
   const adapter = new computer.StockfishAdapter({
     classicEngine: {
