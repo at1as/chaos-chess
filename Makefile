@@ -22,4 +22,5 @@ test:
 
 check:
 	node --check src/engine.js
+	node --check src/classic-ai.js
 	node --check src/app.js

@@ -18,7 +18,7 @@ The current build includes five toggleable rule twists:
 - Double-direction pawns
 - Jump pawns
 
-The project is intentionally dependency-free. Open `index.html` in a browser, or serve the folder locally with `make serve`.
+The app still runs as static browser files. For the best experience, serve the folder locally with `make serve`.
 
 ## Running It
 
@@ -29,6 +29,8 @@ make serve
 ```
 
 Then open `http://localhost:8000`.
+
+Classic computer play uses a browser-based Stockfish worker. It is available only for active classic games in this Phase 1 build, and serving the app over `http://` or `https://` is the most reliable way to enable it.
 
 Run the automated rule tests with:
 
@@ -45,10 +47,18 @@ make check
 ## What The App Does
 
 - Renders a playable local two-player chess board in the browser.
+- Adds an optional classic-only computer opponent powered by Stockfish.
 - Lets you toggle any combination of the five variants, then restart the game with that rule set.
 - Preserves standard check, checkmate, stalemate, castling, en passant, and promotion logic where those concepts still make sense.
 - Uses a rules engine for legality. The UI only renders what the engine says is legal.
 - Tags move-log entries when a move used variant-specific behavior such as wrap-around, friendly fire, or a kamikaze capture.
+
+## Computer Play
+
+- Computer play is Phase 1 only: it works for classic chess and stays off for variant games.
+- The opponent runs fully in the browser through a Stockfish Web Worker, so there is no separate server process to manage.
+- If the current game already has variants enabled, switch them off and start a new game to enable the computer.
+- The bundled Stockfish assets live in `vendor/stockfish/`, and the upstream GPL license text is included in `vendor/stockfish/Copying.txt`.
 
 ## Rule Semantics
 
@@ -152,7 +162,9 @@ Promotion is chosen dynamically when a pawn reaches the last rank.
 ## Architecture
 
 - `src/engine.js` contains the rules engine, legality checks, state transitions, and move descriptions.
-- `src/app.js` handles DOM rendering, interaction, and wiring the variant controls to the engine.
+- `src/classic-ai.js` wraps the browser-based Stockfish worker behind a small engine adapter.
+- `src/app.js` handles DOM rendering, interaction, variant controls, and the classic-only AI turn loop.
+- `vendor/stockfish/` contains the vendored Stockfish browser build used for classic computer play.
 - `tests/engine.test.js` covers the rule nuances that are easiest to get subtly wrong.
 
 ## Why The Engine Is Structured This Way
@@ -170,4 +182,4 @@ Good follow-ups if you keep iterating:
 - Add a custom position editor to test strange variant combinations faster.
 - Add saved presets for named modes.
 - Add move import/export or FEN-like snapshots for debugging.
-- Add AI only after the rule semantics feel stable, because these variants materially change evaluation and legality.
+- Extend AI beyond classic play once the custom variant semantics and evaluation strategy are stable.

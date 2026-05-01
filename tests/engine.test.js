@@ -152,3 +152,22 @@ test("standard pawns still keep their opening two-step without jump pawns enable
   const state = chess.createState();
   assert.deepEqual(moveTargets(state, "e2"), ["e3", "e4"]);
 });
+
+test("moveToUci appends the promotion suffix when needed", () => {
+  assert.equal(chess.moveToUci({
+    from: { x: 0, y: 1 },
+    to: { x: 0, y: 0 },
+    piece: { color: "w", type: "p" }
+  }, "q"), "a7a8q");
+});
+
+test("ChessGame tracks UCI history and restores it on undo", () => {
+  const game = new chess.ChessGame(chess.DEFAULT_RULES);
+
+  assert.equal(game.move(4, 6, 4, 4).ok, true);
+  assert.equal(game.move(4, 1, 4, 3).ok, true);
+  assert.deepEqual(game.getUciMoves(), ["e2e4", "e7e5"]);
+
+  assert.equal(game.undo(), true);
+  assert.deepEqual(game.getUciMoves(), ["e2e4"]);
+});

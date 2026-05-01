@@ -395,11 +395,17 @@ input {
   gap: 12px;
 }
 
+.opponent-form {
+  display: grid;
+  gap: 12px;
+}
+
 .panel-body {
   margin-top: 18px;
 }
 
-.toggle-card {
+.toggle-card,
+.choice-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 12px;
@@ -411,7 +417,8 @@ input {
   cursor: pointer;
 }
 
-.toggle-card input {
+.toggle-card input,
+.choice-card input {
   margin: 0;
   grid-column: 1;
   grid-row: 1;
@@ -436,6 +443,32 @@ input {
 .toggle-copy small {
   color: var(--muted);
   line-height: 1.45;
+}
+
+.control-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.control-stack {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.control-stack select {
+  border-radius: 12px;
+  border: 1px solid rgba(77, 57, 26, 0.18);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  padding: 9px 10px;
+}
+
+.control-stack select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .move-log {
@@ -492,5 +525,9 @@ input {
 
   .promotion-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-row {
+    grid-template-columns: 1fr;
   }
 }

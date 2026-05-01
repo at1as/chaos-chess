@@ -43,6 +43,53 @@
           <details class="panel collapsible-panel" open>
             <summary class="panel-summary">
               <div class="panel-header">
+                <p class="label">Opponent</p>
+                <p class="panel-copy">Classic computer play only.</p>
+              </div>
+            </summary>
+            <div class="panel-body">
+              <form id="opponent-form" class="opponent-form">
+                <label class="choice-card">
+                  <input type="radio" name="opponentMode" value="human" checked>
+                  <span class="toggle-copy">
+                    <strong>Human vs Human</strong>
+                    <small>Two local players share the board.</small>
+                  </span>
+                </label>
+                <label class="choice-card">
+                  <input type="radio" name="opponentMode" value="computer">
+                  <span class="toggle-copy">
+                    <strong>Play vs Computer</strong>
+                    <small>Available only for active classic games in Phase 1.</small>
+                  </span>
+                </label>
+                <div class="control-row">
+                  <label class="control-stack" for="computer-side-select">
+                    Computer Side
+                    <select id="computer-side-select">
+                      <option value="b">Black</option>
+                      <option value="w">White</option>
+                    </select>
+                  </label>
+                  <label class="control-stack" for="computer-level-select">
+                    Think Time
+                    <select id="computer-level-select">
+                      <option value="250">Quick</option>
+                      <option value="600" selected>Standard</option>
+                      <option value="1200">Deep</option>
+                    </select>
+                  </label>
+                </div>
+                <p id="computer-disclaimer" class="panel-copy">
+                  Computer play uses Stockfish and is limited to classic chess in this build.
+                </p>
+              </form>
+            </div>
+          </details>
+
+          <details class="panel collapsible-panel" open>
+            <summary class="panel-summary">
+              <div class="panel-header">
                 <p class="label">Variants</p>
                 <p class="panel-copy">Changes apply when you start a new game.</p>
               </div>
@@ -123,6 +170,7 @@
     </dialog>
 
     <script src="./src/engine.js"></script>
+    <script src="./src/classic-ai.js"></script>
     <script src="./src/app.js"></script>
   </body>
   </html>

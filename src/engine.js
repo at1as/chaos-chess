@@ -39,6 +39,16 @@
     };
   }
 
+  function isClassicRules(rules) {
+    var normalizedRules = normalizeRules(rules);
+
+    return !normalizedRules.friendlyFire &&
+      !normalizedRules.kamikaze &&
+      !normalizedRules.wrapAround &&
+      !normalizedRules.doubleDirectionPawns &&
+      !normalizedRules.jumpPawns;
+  }
+
   function clonePiece(piece) {
     return piece ? { color: piece.color, type: piece.type } : null;
   }
@@ -1043,6 +1053,17 @@
     return tags.length ? text + " [" + tags.join(", ") + "]" : text;
   }
 
+  function moveToUci(move, promotionChoice) {
+    var uci = coordToAlgebraic(move.from.x, move.from.y) + coordToAlgebraic(move.to.x, move.to.y);
+    var promotion = promotionChoice || move.promotion;
+
+    if (promotion && move.piece.type === "p" && move.to.y === getPromotionRank(move.piece.color)) {
+      uci += promotion.toLowerCase();
+    }
+
+    return uci;
+  }
+
   function rulesSummary(rules) {
     var active = [];
 
@@ -1077,6 +1098,7 @@
     this.state = createState(rules || DEFAULT_RULES);
     this.history = [];
     this.moveHistory = [];
+    this.uciHistory = [];
     this.analysis = analyzeState(this.state);
   };
 
@@ -1092,12 +1114,17 @@
     return getAllLegalMoves(this.state, this.state.turn, promotionChoice);
   };
 
+  ChessGame.prototype.getUciMoves = function getUciMoves() {
+    return this.uciHistory.slice();
+  };
+
   ChessGame.prototype.move = function makeMove(fromX, fromY, toX, toY, promotionChoice) {
     var legalMoves = this.getLegalMovesFrom(fromX, fromY, promotionChoice);
     var idx;
     var move = null;
     var snapshot;
     var notation;
+    var uci;
 
     for (idx = 0; idx < legalMoves.length; idx += 1) {
       if (legalMoves[idx].to.x === toX && legalMoves[idx].to.y === toY) {
@@ -1119,18 +1146,22 @@
         inCheck: this.analysis.inCheck,
         reason: this.analysis.reason
       },
-      moveHistory: this.moveHistory.slice()
+      moveHistory: this.moveHistory.slice(),
+      uciHistory: this.uciHistory.slice()
     };
     notation = moveDescriptor(move, this.state.rules, promotionChoice);
+    uci = moveToUci(move, promotionChoice);
 
     this.history.push(snapshot);
     this.state = applyMove(this.state, move, promotionChoice);
     this.moveHistory.push(notation);
+    this.uciHistory.push(uci);
     this.analysis = analyzeState(this.state, promotionChoice);
 
     return {
       ok: true,
       move: move,
+      uci: uci,
       notation: notation,
       analysis: this.analysis
     };
@@ -1146,6 +1177,7 @@
     this.state = snapshot.state;
     this.analysis = snapshot.analysis;
     this.moveHistory = snapshot.moveHistory;
+    this.uciHistory = snapshot.uciHistory || [];
     return true;
   };
 
@@ -1169,9 +1201,11 @@
     getAllLegalMoves: getAllLegalMoves,
     analyzeState: analyzeState,
     applyMove: applyMove,
+    isClassicRules: isClassicRules,
     isSquareAttacked: isSquareAttacked,
     isInCheck: isInCheck,
     moveDescriptor: moveDescriptor,
+    moveToUci: moveToUci,
     rulesSummary: rulesSummary
   };
 }));
