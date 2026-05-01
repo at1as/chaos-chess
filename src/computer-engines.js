@@ -1120,6 +1120,7 @@
     this.orderingWeight = Number(config.orderingWeight);
     this.label = config.label || "Model Search";
     this.id = config.id || "variant-model-search";
+    this.supportsRulesFn = typeof config.supportsRules === "function" ? config.supportsRules : null;
   }
 
   ModelVariantEngine.prototype.init = function init() {
@@ -1167,7 +1168,11 @@
       id: self.id,
       label: self.label,
       family: "variant-hybrid",
-      supportsRules: function supportsRules() {
+      supportsRules: function supportsRules(rules) {
+        if (self.supportsRulesFn) {
+          return self.supportsRulesFn(rules);
+        }
+
         return true;
       }
     };

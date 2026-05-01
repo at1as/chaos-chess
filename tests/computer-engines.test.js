@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const chess = require("../src/engine.js");
 const computer = require("../src/computer-engines.js");
 const features = require("../src/position-encoder.js");
@@ -190,6 +192,35 @@ test("searchPosition accepts a dense multi-layer value model", () => {
   assert.ok(result);
   assert.ok(result.move);
   assert.equal(typeof result.nodes, "number");
+});
+
+test("curated variant ML model asset loads in the runtime evaluator", () => {
+  const payload = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "..", "assets", "models", "variant-ml-hybrid-v1.json"),
+      "utf8"
+    )
+  );
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "q", square: "d1" },
+    { color: "b", type: "q", square: "d8" }
+  ], {
+    rules: {
+      friendlyFire: true,
+      kamikaze: false,
+      wrapAround: true,
+      doubleDirectionPawns: false,
+      jumpPawns: true
+    }
+  });
+  const evaluator = computer.createValueModelEvaluator(payload, {
+    scoreScale: 600
+  });
+  const score = evaluator(state, "w");
+
+  assert.equal(Number.isFinite(score), true);
 });
 
 test("stockfish adapter returns parsed move coordinates", async () => {

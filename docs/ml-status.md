@@ -2,7 +2,7 @@
 
 ## Summary
 
-`Chaos Chess` already has the pieces needed to become a real ML project, and it now includes an end-to-end baseline training path, even though it does not yet ship a production-ready learned engine inside the browser app.
+`Chaos Chess` already has the pieces needed to become a real ML project, and it now includes an end-to-end training path plus a curated ML-backed variant engine exposed in the browser app.
 
 What exists today:
 
@@ -40,6 +40,8 @@ Current backend families:
   Classic chess only
 - `Variant Search`
   Custom rule-aware search backend for the five Chaos Chess variants
+- `Variant ML Hybrid`
+  A model-backed variant engine that blends a trained value model into the custom search stack
 - `Heuristic Baseline`
   Very weak but fast baseline useful for comparison and data-generation experiments
 
@@ -130,6 +132,11 @@ Current sample fields:
 - `searchDepth`
 - `searchNodes`
 - `searchFallback`
+- `teacherEngine`
+- `teacherScore`
+- `teacherDepth`
+- `teacherNodes`
+- `teacherMove`
 - `move`
 - `notation`
 - `outcome`
@@ -137,6 +144,13 @@ Current sample fields:
 - `winner`
 
 This is enough to train a first supervised value model.
+
+The newer teacher-labeling path also makes it possible to decouple:
+
+- which bots generate the trajectories
+- which stronger search process provides the labels
+
+That is useful because it lets the repo generate more decisive games while still keeping full teacher-score coverage.
 
 ### 5. Benchmark Harness
 
@@ -205,16 +219,17 @@ Evidence:
 - canonical side-to-move encoding improved validation correlation
 - deeper search teachers improved target quality
 - search-vs-search teacher data with full search-score coverage improved validation quality again
+- asymmetric trajectory generation plus full teacher labeling improved outcome diversity without giving up score coverage
 - linear and MLP baselines both fit the value targets meaningfully
-- the best offline model so far is the `exp4` Torch `mlp` trained on full-coverage canonical search-vs-search data, with validation correlation around `0.918`
+- the best offline model so far is the `exp5` Torch `mlp` trained on teacher-labeled canonical data, with validation correlation around `0.939`
 
 But:
 
-- the learned evaluators do not yet beat the handcrafted variant search reliably in gameplay benchmarks
-- ordering-only guidance is still the safest integration mode, but recent color-balanced sweeps kept it roughly at parity with plain search rather than clearly ahead
+- the learned engine only shows a modest edge over plain variant search so far, not a dramatic one
+- ordering-only guidance still tends to flatten out near parity, so the current winning configuration uses a light model blend in leaf evaluation
 - a deeper stacked `dense` network did not beat the simpler one-hidden-layer Torch `mlp` on the same `exp4` teacher set
 
-So the project is past the "toy ML scaffolding" stage, but not yet at the "model-backed engine is clearly better" stage.
+So the project is past the "toy ML scaffolding" stage and now has a real model-backed engine in the product, but it is still early rather than decisively strong.
 
 ## Tests And Verification
 

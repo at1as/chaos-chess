@@ -146,6 +146,35 @@ function chooseMove(bot, game, options) {
   };
 }
 
+function serializeDecision(decision) {
+  if (!decision || !decision.move) {
+    return null;
+  }
+
+  return {
+    move: {
+      from: { x: decision.move.from.x, y: decision.move.from.y },
+      to: { x: decision.move.to.x, y: decision.move.to.y },
+      promotion: decision.move.promotion || null
+    },
+    score: decision.score,
+    depth: decision.depth,
+    nodes: decision.nodes,
+    fallback: decision.fallback,
+    engine: decision.engine
+  };
+}
+
+function simpleMoveToUci(move) {
+  if (!move) {
+    return null;
+  }
+
+  return chess.coordToAlgebraic(move.from.x, move.from.y) +
+    chess.coordToAlgebraic(move.to.x, move.to.y) +
+    (move.promotion ? String(move.promotion).toLowerCase() : "");
+}
+
 function outcomeForColor(summary, color) {
   if (summary.winner === null) {
     return 0;
@@ -170,6 +199,14 @@ function playGame(config) {
       moveTime: config.moveTime,
       maxDepth: config.maxDepth
     });
+    const teacherDecision = config.teacherBot ? chooseMove(config.teacherBot, game, {
+      ...(config.teacherOptions || {}),
+      randomFn: config.randomFn,
+      moveTime: Number(config.teacherOptions && config.teacherOptions.moveTime) || config.moveTime,
+      maxDepth: Number.isFinite(Number(config.teacherOptions && config.teacherOptions.maxDepth))
+        ? Number(config.teacherOptions.maxDepth)
+        : config.maxDepth
+    }) : null;
 
     if (!decision.move) {
       break;
@@ -188,6 +225,12 @@ function playGame(config) {
       searchDepth: decision.depth,
       searchNodes: decision.nodes,
       searchFallback: decision.fallback,
+      teacherEngine: teacherDecision ? teacherDecision.engine : null,
+      teacherScore: teacherDecision ? teacherDecision.score : null,
+      teacherDepth: teacherDecision ? teacherDecision.depth : null,
+      teacherNodes: teacherDecision ? teacherDecision.nodes : null,
+      teacherFallback: teacherDecision ? teacherDecision.fallback : null,
+      teacherMove: null,
       move: null,
       notation: null,
       outcome: null,
@@ -208,6 +251,9 @@ function playGame(config) {
 
     sample.move = result.uci;
     sample.notation = result.notation;
+    if (teacherDecision && teacherDecision.move) {
+      sample.teacherMove = simpleMoveToUci(teacherDecision.move);
+    }
     samples.push(sample);
     ply += 1;
   }
@@ -245,6 +291,7 @@ module.exports = {
   parseRulesSpec,
   loadModelPayload,
   playGame,
+  serializeDecision,
   ensureParentDir,
   featureSchema: features.featureSchema
 };

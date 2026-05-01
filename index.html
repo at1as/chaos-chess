@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Chaos Chess | Rulebreak Edition</title>
+    <title>Chaos Chess</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -95,6 +95,7 @@
                       <option value="auto" selected>Auto</option>
                       <option value="classic-stockfish">Stockfish</option>
                       <option value="variant-search-prototype">Variant Search</option>
+                      <option value="variant-ml-hybrid">Variant ML Hybrid</option>
                       <option value="prototype-heuristic">Heuristic Baseline</option>
                     </select>
                   </label>
@@ -189,7 +190,7 @@
         <p id="engine-info-title" class="label">Engine Info</p>
         <div id="engine-info-copy" class="info-copy">
           <p class="panel-copy">
-            Chaos Chess currently exposes three computer engines plus an automatic mode. They do not all
+            Chaos Chess currently exposes four computer engines plus an automatic mode. They do not all
             work the same way, and they do not all support the same rules.
           </p>
           <div class="info-section">
@@ -224,6 +225,16 @@
           </div>
           <div class="info-section">
             <div class="info-heading">
+              <strong>Variant ML Hybrid</strong>
+              <span class="info-badge medium">Strength: MEDIUM</span>
+            </div>
+            <p class="panel-copy">
+              A custom variant search engine with a learned value model blended into its evaluation. It is trained on
+              Chaos Chess self-play and teacher-search data, and currently targets variant games rather than classic chess.
+            </p>
+          </div>
+          <div class="info-section">
+            <div class="info-heading">
               <strong>Heuristic Baseline</strong>
               <span class="info-badge light">Strength: VERY LOW</span>
             </div>
@@ -242,8 +253,9 @@
           <div class="info-section">
             <strong>Current limitations</strong>
             <p class="panel-copy">
-              Variant Search is still early-stage, browser-only, and not yet ML-backed. Its current role is to provide
-              legal, interesting moves while the stronger search and learning pipeline evolve.
+              The ML-backed variant engine is still early-stage and tuned from relatively small self-play datasets.
+              It has started to beat the plain variant search baseline in internal benchmarks, but it is still far less
+              mature than Stockfish on classic chess.
             </p>
           </div>
         </div>
@@ -253,6 +265,7 @@
 
     <script src="./src/engine.js"></script>
     <script src="./src/classic-ai.js"></script>
+    <script src="./src/position-encoder.js"></script>
     <script src="./src/computer-engines.js"></script>
     <script src="./src/app.js"></script>
   </body>

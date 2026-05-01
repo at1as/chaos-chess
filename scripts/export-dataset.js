@@ -60,6 +60,7 @@ const validationRatio = clampRatio(args["validation-ratio"], 0.2);
 const maxSamples = args["max-samples"] ? Math.max(1, Number(args["max-samples"])) : null;
 const seed = args.seed || "chaos-chess";
 const searchScale = Number(args["search-scale"]) || DEFAULT_SEARCH_SCALE;
+const scoreField = args["score-field"] === "teacherScore" ? "teacherScore" : "searchScore";
 const weights = normalizeTargetWeights(
   args["search-weight"] || DEFAULT_SEARCH_WEIGHT,
   args["outcome-weight"] || DEFAULT_OUTCOME_WEIGHT
@@ -67,6 +68,7 @@ const weights = normalizeTargetWeights(
 const rawSamples = parseJsonLines(inputPath);
 let records = rawSamples
   .map((sample) => prepareTrainingRecord(sample, {
+    scoreField,
     searchScale,
     searchWeight: weights.searchWeight,
     outcomeWeight: weights.outcomeWeight
@@ -91,6 +93,7 @@ const metadata = {
   }),
   targetSpec: {
     type: "blended_value",
+    scoreField,
     searchScale,
     searchWeight: weights.searchWeight,
     outcomeWeight: weights.outcomeWeight

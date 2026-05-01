@@ -35,10 +35,43 @@ test("deriveValueTarget falls back to outcome when no search score exists", () =
   }), -1);
 });
 
+test("deriveValueTarget can use teacherScore instead of searchScore", () => {
+  const target = mlData.deriveValueTarget({
+    searchScore: -600,
+    teacherScore: 600,
+    outcome: 0
+  }, {
+    scoreField: "teacherScore",
+    searchScale: 600,
+    searchWeight: 1,
+    outcomeWeight: 0
+  });
+
+  assert.equal(Number(target.toFixed(6)), Number(Math.tanh(1).toFixed(6)));
+});
+
 test("rulesKeyFromRules returns a stable ruleset key", () => {
   assert.equal(mlData.rulesKeyFromRules({}), "classic");
   assert.equal(mlData.rulesKeyFromRules({
     friendlyFire: true,
     jumpPawns: true
   }), "friendlyFire+jumpPawns");
+});
+
+test("prepareTrainingRecord records the chosen score field in source metadata", () => {
+  const record = mlData.prepareTrainingRecord({
+    featureVector: [0, 1],
+    teacherScore: 300,
+    searchScore: -300,
+    outcome: 1,
+    rules: {}
+  }, {
+    scoreField: "teacherScore",
+    searchScale: 600,
+    searchWeight: 1,
+    outcomeWeight: 0
+  });
+
+  assert.equal(record.source.scoreField, "teacherScore");
+  assert.equal(record.searchValue > 0, true);
 });

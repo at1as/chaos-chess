@@ -52,6 +52,8 @@ So the current split is intentional:
   Used for classic chess only.
 - `Variant Search`
   A custom rule-aware search backend for Chaos Chess variants.
+- `Variant ML Hybrid`
+  A learned value model blended into the custom variant search, exposed as a selectable engine for variant play.
 - `Heuristic Baseline`
   A weaker baseline used for comparisons and experiments.
 
@@ -119,13 +121,14 @@ What works today:
 - baseline value-model training
 - offline evaluation
 - model-guided search experiments
+- a browser-exposed ML-backed variant engine built from a curated trained model
 
 What does **not** work yet:
 
-- the trained models do not yet beat the handcrafted variant search reliably in actual play
-- there is not yet a production-ready browser ML engine exposed in the UI
+- the learned engine is still only modestly stronger than the plain variant-search baseline
+- the ML-backed engine is still early-stage and nowhere near Stockfish-level strength on classic chess
 
-That is important context: this repo already contains a real ML pipeline, but the learned evaluator is still experimental rather than clearly stronger than the handcrafted search.
+That is important context: this repo already contains a real ML pipeline and a playable ML-backed variant engine, but the learned evaluator is still early rather than fully mature.
 
 ## Running It
 

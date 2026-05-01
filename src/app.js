@@ -27,6 +27,7 @@
   var engineInfoModal = document.getElementById("engine-info-modal");
   var engineInfoCloseButton = document.getElementById("engine-info-close-button");
   var VARIANT_SETTINGS_STORAGE_KEY = "chaos-chess.variant-settings";
+  var VARIANT_ML_MODEL_URL = "./assets/models/variant-ml-hybrid-v1.json";
   var classicWorkerEngine = typeof window.Worker === "function" &&
     window.ChessPlusAI &&
     window.ChessPlusAI.ClassicEngine
@@ -49,6 +50,7 @@
     window.ChessPlusComputer.HeuristicVariantEngine
     ? new window.ChessPlusComputer.HeuristicVariantEngine()
     : null;
+  var variantMlHybridComputer = null;
   var selectedSquare = null;
   var legalMoves = [];
   var lastMove = null;
@@ -126,6 +128,8 @@
         return stockfishComputer;
       case "variant-search-prototype":
         return variantSearchComputer;
+      case "variant-ml-hybrid":
+        return variantMlHybridComputer;
       case "prototype-heuristic":
         return heuristicVariantComputer;
       default:
@@ -167,7 +171,7 @@
   }
 
   function getAnyComputerBackend() {
-    return stockfishComputer || variantSearchComputer || heuristicVariantComputer;
+    return stockfishComputer || variantSearchComputer || variantMlHybridComputer || heuristicVariantComputer;
   }
 
   function getSelectedComputerBackend() {
@@ -215,11 +219,61 @@
       return "Heuristic Baseline is the weakest engine and mainly useful for quick experiments.";
     }
 
+    if (engineId === "variant-ml-hybrid") {
+      return "Variant ML Hybrid blends a learned evaluator into the custom variant search. Think Time still matters because search remains in the loop.";
+    }
+
     if (engineId === "classic-stockfish" || engineId === "variant-search-prototype") {
       return "Think Time controls search budget. Higher values usually improve move quality.";
     }
 
     return "Auto uses Stockfish for classic chess and Variant Search for variants. Think Time affects the search engines.";
+  }
+
+  function getVariantMlLoadErrorMessage() {
+    if (window.location.protocol === "file:") {
+      return "Variant ML Hybrid needs the app served over http:// or https:// so the bundled model can load. Use make serve locally.";
+    }
+
+    return "Variant ML Hybrid could not load its bundled model.";
+  }
+
+  function loadVariantMlHybridEngine() {
+    if (!window.fetch ||
+      !window.ChessPlusComputer ||
+      !window.ChessPlusComputer.ModelVariantEngine) {
+      return Promise.resolve(null);
+    }
+
+    return window.fetch(VARIANT_ML_MODEL_URL).then(function onResponse(response) {
+      if (!response.ok) {
+        throw new Error("Variant ML model request failed with status " + response.status + ".");
+      }
+
+      return response.json();
+    }).then(function onModelLoaded(payload) {
+      variantMlHybridComputer = new window.ChessPlusComputer.ModelVariantEngine({
+        id: "variant-ml-hybrid",
+        label: payload.label || "Variant ML Hybrid",
+        valueModel: payload,
+        modelBlendWeight: 0.10,
+        supportsRules: function supportsRules(rules) {
+          return !engine.isClassicRules(rules);
+        }
+      });
+      clearBackendError(variantMlHybridComputer);
+      render();
+      return variantMlHybridComputer;
+    }).catch(function onModelError(error) {
+      computerUnavailableReasons["variant-ml-hybrid"] = getVariantMlLoadErrorMessage();
+
+      if (window.console && typeof window.console.error === "function") {
+        window.console.error(error);
+      }
+
+      render();
+      return null;
+    });
   }
 
   function showNewGameFeedback() {
@@ -397,6 +451,7 @@
     var controlsEnabled = Boolean(getAnyComputerBackend()) && settings.mode === "computer";
     var selectedEngineLabel = engineSelectionSummary(selectedRules);
     var stockfishOption = computerEngineSelect.querySelector('option[value="classic-stockfish"]');
+    var variantMlOption = computerEngineSelect.querySelector('option[value="variant-ml-hybrid"]');
     var showComputerControls = settings.mode === "computer";
 
     computerModeInput.disabled = !getAnyComputerBackend();
@@ -404,6 +459,9 @@
     computerLevelSelect.disabled = !controlsEnabled;
     computerEngineSelect.disabled = !controlsEnabled;
     stockfishOption.disabled = !stockfishComputer || !engine.isClassicRules(selectedRules);
+    if (variantMlOption) {
+      variantMlOption.disabled = !variantMlHybridComputer || engine.isClassicRules(selectedRules);
+    }
     computerModeCopy.textContent = "Engine: " + selectedEngineLabel;
     computerModeCopy.hidden = !showComputerControls;
     computerModeCopy.style.display = showComputerControls ? "" : "none";
@@ -626,6 +684,10 @@
 
     if (variantSearchComputer) {
       variantSearchComputer.reset();
+    }
+
+    if (variantMlHybridComputer) {
+      variantMlHybridComputer.reset();
     }
   }
 
@@ -931,4 +993,5 @@
   buildAxisLabels();
   initializeVariantSettings();
   render();
+  loadVariantMlHybridEngine();
 }());

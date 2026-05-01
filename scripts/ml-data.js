@@ -87,6 +87,16 @@ function normalizeTargetWeights(searchWeight, outcomeWeight) {
   };
 }
 
+function resolveScoreField(options) {
+  const requested = options && options.scoreField;
+
+  if (requested === "teacherScore") {
+    return "teacherScore";
+  }
+
+  return "searchScore";
+}
+
 function rulesKeyFromRules(rules) {
   const activeRules = RULE_KEYS.filter((key) => Boolean(rules && rules[key]));
 
@@ -94,8 +104,9 @@ function rulesKeyFromRules(rules) {
 }
 
 function deriveValueTarget(sample, options) {
+  const scoreField = resolveScoreField(options);
   const normalizedSearch = normalizeSearchScore(
-    sample.searchScore,
+    sample[scoreField],
     options && options.searchScale
   );
   const outcome = Number(sample.outcome);
@@ -153,11 +164,13 @@ function prepareTrainingRecord(sample, options) {
     return null;
   }
 
+  const scoreField = resolveScoreField(options);
+
   return {
     features: sample.featureVector,
     featureEncoding: sample.featureEncoding || "absolute",
     targetValue: deriveValueTarget(sample, options),
-    searchValue: normalizeSearchScore(sample.searchScore, options && options.searchScale),
+    searchValue: normalizeSearchScore(sample[scoreField], options && options.searchScale),
     outcome: Number.isFinite(Number(sample.outcome)) ? Number(sample.outcome) : 0,
     rules: sample.rules || {},
     rulesKey: rulesKeyFromRules(sample.rules || {}),
@@ -170,7 +183,13 @@ function prepareTrainingRecord(sample, options) {
       legalMoveCount: Number.isFinite(Number(sample.legalMoveCount)) ? Number(sample.legalMoveCount) : null,
       searchDepth: Number.isFinite(Number(sample.searchDepth)) ? Number(sample.searchDepth) : null,
       searchNodes: Number.isFinite(Number(sample.searchNodes)) ? Number(sample.searchNodes) : null,
-      searchFallback: sample.searchFallback || null
+      searchFallback: sample.searchFallback || null,
+      teacherEngine: sample.teacherEngine || null,
+      teacherMove: sample.teacherMove || null,
+      teacherDepth: Number.isFinite(Number(sample.teacherDepth)) ? Number(sample.teacherDepth) : null,
+      teacherNodes: Number.isFinite(Number(sample.teacherNodes)) ? Number(sample.teacherNodes) : null,
+      teacherFallback: sample.teacherFallback || null,
+      scoreField
     }
   };
 }
@@ -185,6 +204,7 @@ module.exports = {
   normalizeTargetWeights,
   parseJsonLines,
   prepareTrainingRecord,
+  resolveScoreField,
   rulesKeyFromRules,
   shuffleInPlace,
   summarizeExport

@@ -286,6 +286,137 @@ That model format is now supported in:
 
 The first dense run did not beat `mlp64`, but the support is now in place for future experiments.
 
+## 2026-05-01: Teacher-Labeled Asymmetric Trajectories (`exp5`)
+
+### Motivation
+
+The `exp4` dataset solved score coverage, but it still had weak outcome diversity:
+
+- it used `search vs search`
+- only `5/36` games ended decisively
+
+So the next step was to separate:
+
+- trajectory generation
+- teacher labeling
+
+That allowed the project to generate more decisive games with asymmetric play, while still labeling every position with a stronger search teacher.
+
+### What Changed
+
+The self-play pipeline now supports:
+
+- a trajectory bot pair
+- an independent teacher search process
+- exported `teacherScore`, `teacherDepth`, `teacherNodes`, and `teacherMove`
+- dataset export against `teacherScore` instead of only `searchScore`
+
+### Dataset
+
+`exp5` combined two mirrored runs:
+
+- `search` vs `heuristic`
+- `heuristic` vs `search`
+
+Teacher settings:
+
+- teacher bot: `search`
+- teacher move time: `140ms`
+- teacher max depth: `5`
+
+Combined outcome summary:
+
+- games: `40`
+- decisive games: `13`
+- active/nonterminal at ply cap: `27`
+
+This was a better supervision mix than `exp4`:
+
+- full teacher-score coverage remained at `1.0`
+- decisive outcomes increased materially
+- the trajectories were less homogeneous than `search vs search`
+
+## 2026-05-01: `exp5` Offline Model Comparison
+
+### Datasets
+
+- `exp5-searchonly`
+  teacher-score target only
+- `exp5-blend9010`
+  `0.9 * teacherScore + 0.1 * outcome`
+
+### Results
+
+- `exp5-searchonly-mlp64`
+  RMSE `0.1955`, Pearson `0.9371`
+- `exp5-blend9010-mlp64`
+  RMSE `0.1917`, Pearson `0.9394`
+
+### Interpretation
+
+This was the best offline result so far.
+
+Compared with the strongest earlier `exp4` model:
+
+- the target fit improved substantially
+- the outcome-blended variant was slightly better than pure teacher-score regression
+
+That gave the first strong reason to test blended evaluation in gameplay again.
+
+## 2026-05-01: `exp5` Gameplay Results
+
+### Candidates
+
+- `exp5-searchonly-mlp64` as ordering-only guidance
+- `exp5-blend9010-mlp64` as a light leaf-eval blend
+
+### Tuning Sweep
+
+At `100ms`, random rules, seeds `tune-a,tune-b,tune-c`:
+
+- `exp5-searchonly` ordering-only, weight `0.10`
+  `4W / 4L / 16D`, score `0.500`
+- `exp5-blend9010` leaf blend, weight `0.10`
+  `4W / 3L / 17D`, score `0.521`
+
+### Confirmatory Sweeps
+
+At `100ms`, random rules, `4` games per seed per color:
+
+- seeds `confirm-a..confirm-e`
+  `3W / 0L / 37D`, score `0.537`
+- seeds `verify-a..verify-e`
+  `4W / 2L / 34D`, score `0.525`
+
+### Current Best Read
+
+This is the first model configuration that looks strong enough to expose in the product:
+
+- it beats plain `Variant Search` on multiple independent color-balanced seed families
+- the edge is modest, not dramatic
+- the best configuration is **not** the pure ordering model
+- the best configuration so far is:
+  `exp5-blend9010-mlp64` with a `0.10` model blend
+
+Across the two larger confirmatory seed families, that engine scored above parity against plain `Variant Search`.
+
+## 2026-05-01: Product Promotion
+
+The repo now includes a curated browser model artifact:
+
+- `assets/models/variant-ml-hybrid-v1.json`
+
+That model is:
+
+- derived from `exp5-blend9010-mlp64`
+- minified and rounded for browser use
+- wired into the app as `Variant ML Hybrid`
+
+This is an important threshold for the project:
+
+- the ML work is no longer only offline infrastructure
+- there is now a playable, model-backed engine in the product itself
+
 ## Current Best Read
 
 As of now:
@@ -293,15 +424,16 @@ As of now:
 - the learned models clearly learn something offline
 - the canonical encoding was a real improvement
 - full-coverage search-vs-search teacher data was another real improvement
+- teacher-labeled asymmetric trajectories were another real improvement
 - ordering-only guidance is the safest integration mode so far
-- the hybrid engine is not yet clearly strong enough to replace the handcrafted search baseline
+- a light outcome-blended leaf evaluator is now modestly stronger than plain variant search on repeated seed families
 
 ## Next Benchmarking Step
 
-The next useful experiment is no longer "tune the same model a little more." The better next step is to improve the teacher data or model quality first, then retest.
+The next useful experiment is no longer "can we get above parity at all?" The next step is to make that edge larger and more stable.
 
 Questions to answer:
 
-- does a stronger teacher dataset produce a model that beats parity in the same sweep harness?
-- does a larger or better-regularized Torch MLP outperform the current `exp3` model?
-- does blended evaluation become useful once the learned value is stronger, or is ordering-only still the right insertion point?
+- does a slightly different outcome/search blend outperform `0.90 / 0.10`?
+- can a stronger teacher pass or a larger dataset push the live edge above the current modest margin?
+- is policy-style supervision the next lever now that value-only regression finally produced a positive gameplay signal?

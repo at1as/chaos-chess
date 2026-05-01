@@ -31,6 +31,13 @@ const whiteBlend = args["white-blend"] ? Number(args["white-blend"]) : undefined
 const blackBlend = args["black-blend"] ? Number(args["black-blend"]) : undefined;
 const whiteOrderingWeight = args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined;
 const blackOrderingWeight = args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined;
+const teacherBot = args.teacher || null;
+const teacherModelPath = args["teacher-model"] || null;
+const teacherOrderingModelPath = args["teacher-ordering-model"] || null;
+const teacherBlend = args["teacher-blend"] ? Number(args["teacher-blend"]) : undefined;
+const teacherOrderingWeight = args["teacher-ordering-weight"] ? Number(args["teacher-ordering-weight"]) : undefined;
+const teacherMoveTime = args["teacher-move-time"] ? Number(args["teacher-move-time"]) : moveTime;
+const teacherMaxDepth = args["teacher-max-depth"] ? Number(args["teacher-max-depth"]) : maxDepth;
 const seed = args.seed || "chaos-chess-selfplay";
 const randomFn = createSeededRandom(seed);
 
@@ -61,6 +68,15 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
       modelBlendWeight: blackBlend,
       orderingWeight: blackOrderingWeight
     } : undefined,
+    teacherBot,
+    teacherOptions: teacherBot ? {
+      valueModel: teacherModelPath ? loadModelPayload(teacherModelPath) : undefined,
+      orderingValueModel: teacherOrderingModelPath ? loadModelPayload(teacherOrderingModelPath) : undefined,
+      modelBlendWeight: teacherBlend,
+      orderingWeight: teacherOrderingWeight,
+      moveTime: teacherMoveTime,
+      maxDepth: teacherMaxDepth
+    } : undefined,
     moveTime,
     maxDepth,
     maxPlies
@@ -89,6 +105,13 @@ fs.writeFileSync(metadataPath, JSON.stringify({
   blackBlend: Number.isFinite(blackBlend) ? blackBlend : null,
   whiteOrderingWeight: Number.isFinite(whiteOrderingWeight) ? whiteOrderingWeight : null,
   blackOrderingWeight: Number.isFinite(blackOrderingWeight) ? blackOrderingWeight : null,
+  teacherBot,
+  teacherModelPath,
+  teacherOrderingModelPath,
+  teacherBlend: Number.isFinite(teacherBlend) ? teacherBlend : null,
+  teacherOrderingWeight: Number.isFinite(teacherOrderingWeight) ? teacherOrderingWeight : null,
+  teacherMoveTime,
+  teacherMaxDepth: teacherMaxDepth || null,
   featureEncoding,
   seed,
   moveTime,
@@ -107,6 +130,9 @@ process.stdout.write([
   blackModelPath ? `Black model: ${blackModelPath}` : null,
   whiteOrderingModelPath ? `White ordering model: ${whiteOrderingModelPath}` : null,
   blackOrderingModelPath ? `Black ordering model: ${blackOrderingModelPath}` : null,
+  teacherBot ? `Teacher bot: ${teacherBot}` : null,
+  teacherModelPath ? `Teacher model: ${teacherModelPath}` : null,
+  teacherOrderingModelPath ? `Teacher ordering model: ${teacherOrderingModelPath}` : null,
   `Feature encoding: ${featureEncoding}`,
   `Seed: ${seed}`,
   `Rules: ${rulesSpec}`,
