@@ -140,6 +140,7 @@ Possible follow-ups:
 - pairwise or regret-style ranking targets for move ordering
 - direct candidate-score targets derived from exact runtime shortlists
 - confidence-aware gating for pairwise scorers based on learned margin estimates
+- iterative hard-position mining that refreshes the disagreement slice from the latest engine rather than a fixed corpus
 - depth-aware policy integration
 - search-state-matched policy data instead of only played-game root positions
 - lightweight MCTS experiments
@@ -173,7 +174,8 @@ The next concrete implementation order should be:
 5. keep those match sets sequential when search is wall-clock bounded; parallel sweeps are not valid evidence
 6. tune depth-aware policy integration and other distribution-shift defenses
 7. generate policy data from the exact states search struggles with, not just from played trajectories
-8. explore regret-based or margin-calibrated ranking targets on top of the current pairwise path
-9. expose new model-backed engines in the browser UI only after they are credibly useful
+8. iterate on hard-position mining thresholds and refresh the mined slice from newer engines
+9. explore regret-based or margin-calibrated ranking targets on top of the current pairwise path
+10. expose new model-backed engines in the browser UI only after they are credibly useful
 
 That is the shortest path from today's codebase to a genuine hybrid ML engine.

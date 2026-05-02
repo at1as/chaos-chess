@@ -1092,3 +1092,82 @@ This was useful because it narrowed the search:
 - and it did not rescue the online result
 
 So the main issue still looks like search integration dynamics, not this specific pair-weight definition
+
+## 2026-05-01: Hard-Position Mining (`exp11`)
+
+### Motivation
+
+At this point the repo had several families of models that looked good offline but flattened out online.
+
+So the next question became:
+
+- are we training on too many easy positions?
+
+The first hard-mining pass focused on states where the current engine and the stronger teacher disagreed by a meaningful amount.
+
+### Mining Rule
+
+The first hard slice used:
+
+- self-play corpus: `exp6-selfplay`
+- engine filter: `search`
+- only disagreement positions
+- `maxPly <= 24`
+- `teacherGap = teacherScore - searchScore >= 40`
+- shortlist-aligned teacher rerun with `candidateTopK = 6`
+
+That yielded:
+
+- `130` shortlist-aligned distilled positions
+- `772` candidate rows
+- average legal candidates per position: about `5.96`
+
+The teacher root-margin distribution on this hard slice still varied a lot:
+
+- median root margin: about `15.35`
+- 75th percentile: about `47.51`
+
+So the hard slice was genuinely tougher, but not uniformly decisive.
+
+### Pairwise Training
+
+Two hard-slice pairwise models were trained:
+
+- `exp11-hard40-bestrest-pairwise-mlp256`
+  - validation pair accuracy `0.9297`
+  - held-out top-1 reconstruction `0.7692`
+- `exp11-hard40-allpairs-pairwise-mlp256`
+  - validation pair accuracy `0.9475`
+  - held-out top-1 reconstruction `0.8462`
+
+Compared with the broader `exp9` pairwise runs, these were weaker offline. That is expected because the dataset was much smaller and more selective.
+
+### Online Result
+
+Short tuning family `exp9pa1..exp9pa3`, `60ms`, `2` games per seed per color:
+
+- baseline `Variant ML Hybrid` vs `search`
+  `1W / 1L / 10D`, score `0.500`
+- hard-slice `all_pairs`, root-only top-`6`, shortlist-count mode, weight `20`
+  `2W / 1L / 9D`, score `0.542`
+
+Independent family `exp6sv1..exp6sv4`, `60ms`, `4` games per seed per color:
+
+- hard-slice `all_pairs`, root-only top-`6`, shortlist-count mode, weight `20`
+  `2W / 4L / 26D`, score `0.469`
+
+### Interpretation
+
+This was still useful:
+
+- the hard-mined model outperformed the broader pairwise models on the short tuning family
+- so mining harder states does look directionally correct
+- but the gain still did not survive the independent confirmatory family
+
+That suggests the next step is not "stop mining hard positions."
+
+It is:
+
+- iterate the hard-mining thresholds
+- refresh the mined slice from newer engines
+- or combine hard mining with a richer integration rule such as confidence-aware gating

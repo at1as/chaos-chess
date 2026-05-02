@@ -15,6 +15,10 @@ const {
   rulesKeyFromRules,
   shuffleInPlace
 } = require("./ml-data.js");
+const {
+  samplePassesHardFilters,
+  teacherGap
+} = require("./hard-position-data.js");
 
 function clampRatio(value, fallback) {
   const numericValue = Number(value);
@@ -58,6 +62,10 @@ function shouldIncludeSample(sample, options) {
     if (!Number.isFinite(ply) || ply > options.maxPly) {
       return false;
     }
+  }
+
+  if (!samplePassesHardFilters(sample, options)) {
+    return false;
   }
 
   return true;
@@ -121,6 +129,7 @@ function bundlePosition(sample, options) {
         teacherNodes: Number.isFinite(Number(sample.teacherNodes)) ? Number(sample.teacherNodes) : null,
         searchDepth: Number.isFinite(Number(sample.searchDepth)) ? Number(sample.searchDepth) : null,
         searchNodes: Number.isFinite(Number(sample.searchNodes)) ? Number(sample.searchNodes) : null,
+        teacherGap: teacherGap(sample),
         labelField,
         candidateTopK: Number.isFinite(options.candidateTopK) ? options.candidateTopK : null
       }
@@ -211,12 +220,14 @@ const engineFilter = args.engine || null;
 const onlyDisagreements = args["only-disagreements"] === "true" || args["only-disagreements"] === true;
 const maxPly = args["max-ply"] ? Number(args["max-ply"]) : undefined;
 const candidateTopK = args["candidate-top-k"] ? Number(args["candidate-top-k"]) : undefined;
+const minimumTeacherGap = args["min-teacher-gap"] ? Number(args["min-teacher-gap"]) : undefined;
 const rawSamples = parseJsonLines(inputPath);
 let positions = rawSamples
   .filter((sample) => shouldIncludeSample(sample, {
     engine: engineFilter,
     onlyDisagreements,
-    maxPly
+    maxPly,
+    minimumTeacherGap
   }))
   .map((sample) => bundlePosition(sample, {
     labelField,
@@ -247,6 +258,7 @@ const metadata = {
     engineFilter,
     onlyDisagreements,
     maxPly: Number.isFinite(maxPly) ? maxPly : null,
+    minimumTeacherGap: Number.isFinite(minimumTeacherGap) ? minimumTeacherGap : null,
     candidateTopK: Number.isFinite(candidateTopK) ? candidateTopK : null
   },
   totals: summarizePolicyRecords(flattenPositionRecords(positions)),

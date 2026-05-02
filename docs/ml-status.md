@@ -20,6 +20,7 @@ What exists today:
 - calibrated shortlist policy-ordering controls for isolating train/runtime mismatch
 - a candidate-score regression path built directly from teacher root scores
 - a pairwise move-ranking path built from teacher-preferred candidate comparisons
+- hard-position mining filters based on teacher disagreement and root margin
 
 That means the repo already covers environment design, search-based data generation, feature encoding, baseline model training, offline evaluation, and hybrid-search experiments. The missing piece is a learned evaluator that is clearly useful in actual play.
 
@@ -320,6 +321,36 @@ Current finding:
   - held-out top-1 reconstruction `0.915`
 - online, even that stronger ranking signal still flattened back toward parity in sequential color-balanced sweeps
 
+### 6e. Hard-Position Mining
+
+Primary files:
+
+- `scripts/hard-position-data.js`
+- `scripts/export-policy-dataset.js`
+- `scripts/export-policy-distill-dataset.js`
+
+What exists today:
+
+- policy and distillation exports can now filter for hard states directly
+- current filters include:
+  - minimum `teacherScore - searchScore`
+  - minimum teacher root `best - second-best` margin
+- this lets the repo focus training on positions where:
+  - the current engine disagrees with the teacher
+  - the teacher itself has a meaningful preference, not just a tiny edge
+
+Why it exists:
+
+- broad self-play distributions contain many easy or low-signal positions
+- the search engine only benefits from ML if the model helps on the states where ordering mistakes actually matter
+- mining those failures is a cleaner next step than just scaling model size
+
+Current finding:
+
+- a first `teacherGap >= 40` shortlist-aligned hard slice produced `130` positions
+- hard-slice pairwise models were weaker offline than the broad pairwise models, which is expected from the smaller dataset
+- but the hard-slice `all_pairs` model did beat the baseline on one short tuning family before falling back on an independent confirmatory family
+
 ### 7. Shared-Model Strategy
 
 The current direction is one shared model across all rule combinations, not one model per variant preset.
@@ -350,6 +381,7 @@ Evidence:
 - a broad candidate-score regressor reached validation correlation around `0.976` on teacher root-score deltas
 - a shortlist-aligned candidate-score regressor was also built to match the runtime top-`K` reranker exactly
 - a shortlist-aligned pairwise ranking model reached held-out top-1 reconstruction around `0.915` with pairwise accuracy around `0.956`
+- a hard-slice shortlist-aligned pairwise model reached a short-run live score around `0.542` on a tuning family after mining `teacherGap >= 40` positions
 
 But:
 
@@ -361,6 +393,7 @@ But:
 - disagreement-focused policy fine-tuning improved offline top-1 again, but still did not convert into a stable live edge
 - candidate-score regression improved offline fit again, but still flattened to parity or mild underperformance in live search
 - pairwise ranking improved offline move-ordering fidelity again, but still did not produce a stable live edge on independent seeds
+- hard-position mining created a more targeted experimental slice, but the first mined model still failed to hold its edge on independent seed families
 
 So the project is past the "toy ML scaffolding" stage and now has a real model-backed engine in the product, but it is still early rather than decisively strong.
 

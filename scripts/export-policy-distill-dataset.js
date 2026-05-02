@@ -16,6 +16,12 @@ const {
   rulesKeyFromRules,
   shuffleInPlace
 } = require("./ml-data.js");
+const {
+  rootCandidatesPassHardFilters,
+  rootMargin,
+  samplePassesHardFilters,
+  teacherGap
+} = require("./hard-position-data.js");
 
 function clampRatio(value, fallback) {
   const numericValue = Number(value);
@@ -51,6 +57,10 @@ function shouldIncludeSample(sample, options) {
     if (!Number.isFinite(ply) || ply > options.maxPly) {
       return false;
     }
+  }
+
+  if (!samplePassesHardFilters(sample, options)) {
+    return false;
   }
 
   return true;
@@ -134,6 +144,10 @@ function bundlePosition(sample, options) {
     return null;
   }
 
+  if (!rootCandidatesPassHardFilters(rootCandidates, options)) {
+    return null;
+  }
+
   const featureEncoding = sample.featureEncoding === "absolute" ? "absolute" : "canonical";
   const positionId = `${sample.gameId || "game"}:${Number.isFinite(Number(sample.ply)) ? Number(sample.ply) : 0}`;
   const rawTargetProbabilities = softmaxScores(rootCandidates, options.temperature);
@@ -188,7 +202,9 @@ function bundlePosition(sample, options) {
         teacherDepth: teacherResult.depth,
         teacherNodes: teacherResult.nodes,
         distillTemperature: options.temperature,
-        candidateTopK: Number.isFinite(options.candidateTopK) ? options.candidateTopK : null
+        candidateTopK: Number.isFinite(options.candidateTopK) ? options.candidateTopK : null,
+        teacherGap: teacherGap(sample),
+        rootMargin: rootMargin(rootCandidates)
       }
     };
   }).filter(Boolean);
@@ -271,6 +287,8 @@ const seed = args.seed || "chaos-chess-policy-distill";
 const engineFilter = args.engine || null;
 const onlyDisagreements = args["only-disagreements"] === "true" || args["only-disagreements"] === true;
 const maxPly = args["max-ply"] ? Number(args["max-ply"]) : undefined;
+const minimumTeacherGap = args["min-teacher-gap"] ? Number(args["min-teacher-gap"]) : undefined;
+const minimumRootMargin = args["min-root-margin"] ? Number(args["min-root-margin"]) : undefined;
 const candidateTopK = args["candidate-top-k"] ? Number(args["candidate-top-k"]) : undefined;
 const moveTime = args["teacher-move-time"] ? Number(args["teacher-move-time"]) : 120;
 const maxDepth = args["teacher-max-depth"] ? Number(args["teacher-max-depth"]) : undefined;
@@ -289,7 +307,8 @@ let positions = rawSamples
   .filter((sample) => shouldIncludeSample(sample, {
     engine: engineFilter,
     onlyDisagreements,
-    maxPly
+    maxPly,
+    minimumTeacherGap
   }))
   .map((sample) => bundlePosition(sample, {
     moveTime,
@@ -297,6 +316,7 @@ let positions = rawSamples
     temperature,
     targetTopK,
     candidateTopK,
+    minimumRootMargin,
     valueModel: valueModelPath ? loadModelPayload(valueModelPath) : undefined,
     orderingValueModel: orderingModelPath ? loadModelPayload(orderingModelPath) : undefined,
     policyModel: policyModelPath ? loadModelPayload(policyModelPath) : undefined,
@@ -330,6 +350,8 @@ const metadata = {
     engineFilter,
     onlyDisagreements,
     maxPly: Number.isFinite(maxPly) ? maxPly : null,
+    minimumTeacherGap: Number.isFinite(minimumTeacherGap) ? minimumTeacherGap : null,
+    minimumRootMargin: Number.isFinite(minimumRootMargin) ? minimumRootMargin : null,
     candidateTopK: Number.isFinite(candidateTopK) ? candidateTopK : null,
     temperature,
     targetTopK: Number.isFinite(targetTopK) ? targetTopK : null,

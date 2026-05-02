@@ -44,6 +44,7 @@ check:
 	node --check src/app.js
 	node --check scripts/ai-common.js
 	node --check scripts/candidate-score-data.js
+	node --check scripts/hard-position-data.js
 	node --check scripts/ml-data.js
 	node --check scripts/pairwise-policy-data.js
 	node --check scripts/selfplay.js

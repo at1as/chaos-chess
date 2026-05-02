@@ -138,6 +138,7 @@ The newer search-guidance experiments also include:
 - pointwise candidate-score regression from teacher root scores
 - shortlist-aligned distillation runs where the model sees the same top-`K` move set the runtime reranker sees
 - pairwise move-ranking models trained directly on teacher-preferred move comparisons
+- hard-position mining based on baseline-vs-teacher disagreement and teacher root-margin filters
 
 ### Current ML Status
 
@@ -151,6 +152,7 @@ What works today:
 - model-guided search experiments
 - calibrated policy-ordering experiments with explicit train/runtime alignment controls
 - candidate-score regression experiments over teacher root scores
+- disagreement-focused hard-slice mining for teacher-vs-baseline failures
 - a browser-exposed ML-backed variant engine built from a curated trained model
 
 What does **not** work yet:
@@ -159,6 +161,7 @@ What does **not** work yet:
 - the ML-backed engine is still early-stage and nowhere near Stockfish-level strength on classic chess
 - the newer policy-ordering model is strong offline, but not yet consistently above the current value-hybrid in independent live benchmarks
 - the newer candidate-score regressors fit teacher root scores very well offline, but still have not produced a clear live strength gain
+- the new hard-slice pairwise models can improve on short tuning families, but still flatten back near parity or mild underperformance on independent seed families
 
 One methodological note matters here: because the search engines are wall-clock bounded, benchmark sweeps must be run sequentially. Parallel engine matches distort the effective think time and are not treated as valid evidence.
 
@@ -206,6 +209,11 @@ Export train/validation soft-policy distillation datasets:
 ```bash
 make export-policy-distill-dataset
 ```
+
+Both policy exporters can also mine harder states directly with flags like:
+
+- `--min-teacher-gap 40`
+- `--min-root-margin 40`
 
 Export train/validation candidate-score datasets from teacher root scores:
 
@@ -280,6 +288,7 @@ node scripts/selfplay.js --games 40 --rules random --white search --black heuris
 node scripts/export-dataset.js --input ml/datasets/selfplay.jsonl --search-weight 1 --outcome-weight 0
 node scripts/export-policy-dataset.js --input ml/datasets/selfplay.jsonl --label-field teacher
 node scripts/export-policy-distill-dataset.js --input ml/datasets/selfplay.jsonl --teacher-model assets/models/variant-ml-hybrid-v1.json --teacher-blend 0.10
+node scripts/export-policy-distill-dataset.js --input ml/datasets/selfplay.jsonl --teacher-model assets/models/variant-ml-hybrid-v1.json --teacher-blend 0.10 --only-disagreements true --min-teacher-gap 40 --candidate-top-k 6
 node scripts/export-candidate-score-dataset.js --train-input ml/datasets/policy-distill-train.jsonl --validation-input ml/datasets/policy-distill-validation.jsonl --score-field targetScoreDelta
 node scripts/export-pairwise-policy-dataset.js --train-input ml/datasets/policy-distill-train.jsonl --validation-input ml/datasets/policy-distill-validation.jsonl --pair-mode best_vs_rest
 python3 scripts/train-value-model.py --model linear --epochs 20
