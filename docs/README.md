@@ -4,6 +4,8 @@ This repo now has a small AI/ML documentation set so the project reads clearly a
 
 ## Guides
 
+- [How The AI Works](how-the-ai-works.md)
+  Visual walkthrough of the search and ML stack, with diagrams.
 - [AI Architecture Spec](ai-architecture.md)
   Forward-looking runtime and system design for search and ML-backed engines.
 - [ML Status](ml-status.md)
@@ -15,7 +17,8 @@ This repo now has a small AI/ML documentation set so the project reads clearly a
 
 ## Recommended Reading Order
 
-1. Start with [ML Status](ml-status.md) to see the current state of the repo.
-2. Read [AI Architecture Spec](ai-architecture.md) for the long-term shape.
-3. Use [ML Roadmap](ml-roadmap.md) for the next milestones and experiment plan.
-4. Use [Experiment Log](experiment-log.md) for concrete results and current observations.
+1. Start with [How The AI Works](how-the-ai-works.md) for the best visual overview.
+2. Read [ML Status](ml-status.md) to see the current state of the repo.
+3. Read [AI Architecture Spec](ai-architecture.md) for the long-term shape.
+4. Use [ML Roadmap](ml-roadmap.md) for the next milestones and experiment plan.
+5. Use [Experiment Log](experiment-log.md) for concrete results and current observations.

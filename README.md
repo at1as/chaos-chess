@@ -61,6 +61,8 @@ The browser UI is still primarily a playable product surface. Most of the ML wor
 
 ## ML Strategy
 
+If you want the quickest visual explanation of the AI stack, start with [docs/how-the-ai-works.md](docs/how-the-ai-works.md).
+
 ### One Shared Model, Not 32 Separate Models
 
 The current direction is **one shared model across all rule combinations**, not one model per variant preset.
@@ -430,6 +432,8 @@ Promotion is chosen dynamically when a pawn reaches the last rank.
 
 - [docs/README.md](docs/README.md)
   Documentation index
+- [docs/how-the-ai-works.md](docs/how-the-ai-works.md)
+  Visual walkthrough of the search and ML stack
 - [docs/ml-status.md](docs/ml-status.md)
   What is already built
 - [docs/ai-architecture.md](docs/ai-architecture.md)
