@@ -17,6 +17,7 @@ Important benchmarking rules for this repo:
 - engine comparisons should be color-balanced, not just candidate-as-White
 - very short runs are useful for smoke tests, not for claims
 - offline validation metrics matter, but gameplay benchmarks decide whether a model is actually helping
+- wall-clock bounded engine matches must be run sequentially; parallel sweeps distort effective think time and are not trusted for claims
 
 The current benchmark utilities:
 
@@ -577,3 +578,517 @@ The next useful experiments are:
 - depth-aware policy schedules instead of a hard root cutoff
 - joint value-plus-policy training
 - policy fine-tuning specifically on positions where search is currently indecisive
+
+## 2026-05-01: `exp6b` Disagreement-Focused Policy Fine-Tuning
+
+### Motivation
+
+The first `exp6` policy models were trained on all teacher-labeled positions.
+
+That is broad, but it also spends a lot of capacity on positions where:
+
+- plain `Variant Search` already agrees with the stronger hybrid teacher
+- a learned root prior cannot change anything meaningful
+
+So the next refinement was to train on the positions that actually matter:
+
+- `engine == search`
+- `move != teacherMove`
+
+That turns the policy task into "learn where plain search is wrong," which is a much more targeted signal for root-only guidance.
+
+### Datasets
+
+Two filtered exports were created from the same `exp6` corpus:
+
+- `exp6-search-disagree`
+  all search-vs-teacher disagreement positions
+- `exp6-search-disagree-early`
+  the same, but capped to `ply <= 24`
+
+Sizes:
+
+- `exp6-search-disagree`
+  `966` positions, `31692` candidates
+- `exp6-search-disagree-early`
+  `589` positions, `21982` candidates
+
+### Offline Results
+
+Using the same listwise `mlp256` policy trainer:
+
+- `exp6-search-disagree-mlp256`
+  top-1 `0.6839`, mean teacher probability `0.5880`
+- `exp6-search-disagree-early-mlp256`
+  top-1 `0.7542`, mean teacher probability `0.6622`
+
+Important read:
+
+- the early disagreement slice was the strongest offline policy model so far
+- that result was better than the broader `exp6-policy-mlp256` model
+- so the filtering idea was not noise; it created a cleaner supervised problem
+
+### Online Results
+
+Root-only integration, `60ms`, random rules, seeds `exp6hd1..exp6hd3`:
+
+- baseline hybrid vs search
+  `1W / 1L / 16D`, score `0.500`
+- disagreement-early model, root-only, weight `10`
+  `0W / 1L / 17D`, score `0.472`
+- disagreement-early model, root-only, weight `15`
+  `0W / 1L / 17D`, score `0.472`
+
+### Interpretation
+
+This is a useful failure, not wasted work.
+
+What it means:
+
+- disagreement-focused policy supervision clearly improves the offline task
+- but the offline target is still not perfectly aligned with stronger live play
+- simply becoming better at imitating the teacher on filtered root positions is not enough on its own
+
+That points to the next real gap:
+
+- we likely need better *search-state matching*, not just better label curation
+- root-time positions from played games are still not the same as the states the engine most struggles with under time pressure
+
+### Updated Read After `exp6b`
+
+The strongest current policy story is:
+
+- broad listwise policy training works
+- root-only integration is much safer than full-tree policy ordering
+- targeted disagreement filtering improves offline top-1 substantially
+- but none of the policy variants are yet stable enough online to replace the shipped value-hybrid engine
+
+## 2026-05-01: `exp6c` Top-K Root Reranking
+
+One more integration defense was added after `exp6b`:
+
+- let policy touch only the root
+- and only rerank the top heuristic candidates instead of the full legal move list
+
+This was implemented as `policyTopK`.
+
+Idea:
+
+- preserve the search engine's tactical priors
+- let the model act more like a precision reranker than a global reorderer
+
+Result on a small matched seed family at `60ms`, seeds `exp6tk1..exp6tk3`:
+
+- baseline hybrid vs search
+  `2W / 0L / 16D`, score `0.556`
+- root-only policy, full candidate list
+  `0W / 0L / 18D`, score `0.500`
+- root-only policy, top-`6` rerank
+  `1W / 0L / 17D`, score `0.528`
+
+Interpretation:
+
+- the top-`6` rerank was safer than unrestricted root-only policy on that seed family
+- but it still did not beat the baseline there
+- so `policyTopK` is a useful control surface, not yet a breakthrough
+
+## 2026-05-01: `exp6d` Soft-Policy Distillation
+
+### Motivation
+
+The one-hot policy path may still be too lossy:
+
+- it only tells the student which move won
+- it throws away how much better that move was than the alternatives
+
+So the next step was to expose full teacher root scores from search and train against a softened move distribution instead of a one-hot label.
+
+### New Infrastructure
+
+Added:
+
+- `searchPosition(..., { includeRootScores: true })`
+- `scripts/export-policy-distill-dataset.js`
+- `scripts/train-policy-distill-torch.py`
+
+This allows:
+
+- rerunning a stronger teacher on saved root states
+- collecting scored legal candidates
+- converting those scores into a soft target distribution
+- training a student against the whole preference distribution
+
+### First Distillation Attempt
+
+Dataset:
+
+- early disagreement slice from `exp6`
+- teacher: `Variant ML Hybrid`
+- temperature: `220`
+
+Observation:
+
+- the target was far too flat
+- mean best-move target probability was only about `0.051`
+
+That made the soft target too close to uniform for a practical reranker.
+
+### Sharpened Distillation
+
+Refined settings:
+
+- temperature: `80`
+- truncate target mass to teacher top `6` moves
+
+This improved the target shape materially:
+
+- mean best-move target probability: about `0.219`
+- mean entropy dropped substantially
+
+### Offline Result
+
+Model:
+
+- `exp6-distill-early-top6-mlp256`
+
+Validation:
+
+- top-1 `0.6695`
+- mean teacher probability `0.1897`
+
+Compared with the best one-hot early-disagreement policy model:
+
+- the distillation model was worse on top-1
+- but it tracked a richer target and was still worth testing online
+
+### Online Result
+
+Root-only, top-`6` reranking, `60ms`, seeds `exp6sd1..exp6sd3`:
+
+- baseline hybrid vs search
+  `0W / 1L / 17D`, score `0.472`
+- distilled root-only top-`6` rerank
+  `1W / 1L / 16D`, score `0.500`
+
+### Interpretation
+
+This was another useful partial result:
+
+- richer teacher targets did not break through decisively
+- but they did recover some of the gap relative to baseline
+- the main limitation still appears to be live search-state mismatch, not lack of policy-training machinery
+
+## 2026-05-01: Calibrated Shortlist Policy Reranking
+
+### Motivation
+
+The shortlist policy models looked better offline than they did online, so the next hypothesis was not "bigger network."
+
+It was "runtime mismatch."
+
+Two concrete mismatches were addressed:
+
+- grouped policy logits were being consumed as raw scalar scores
+- shortlist-trained models were seeing full legal-move counts at runtime instead of shortlist counts
+
+### Runtime Changes
+
+Search ordering gained:
+
+- optional shortlist softmax conversion
+- optional confidence-gap gating before policy pressure is applied
+- optional shortlist-count feature mode so the policy model can see the same legal-move-count semantics it saw during training
+
+### Benchmark Hygiene Lesson
+
+An early attempt to compare these variants in parallel produced obviously conflicting results.
+
+That was not a model signal. It was a methodology bug:
+
+- these searches are wall-clock bounded
+- parallel runs steal CPU from each other
+- that changes effective search depth
+
+From this point on, the repo treats sequential color-balanced sweeps as the only valid evidence for engine-strength comparisons.
+
+### Sequential Results
+
+Matched seeds `exp6sl1..exp6sl3`, `60ms`, `3` games per seed per color:
+
+- baseline `Variant ML Hybrid` vs `search`
+  `2W / 1L / 15D`, score `0.528`
+- shortlist one-hot policy, raw logits, old full-count mismatch
+  `0W / 1L / 17D`, score `0.472`
+- shortlist one-hot policy, raw logits, shortlist-count fix
+  `1W / 1L / 16D`, score `0.500`
+- shortlist one-hot policy, softmax reranking, shortlist-count fix
+  `2W / 1L / 15D`, score `0.528`
+
+Independent seeds `exp6sv1..exp6sv4`, `60ms`, `4` games per seed per color:
+
+- baseline `Variant ML Hybrid` vs `search`
+  `2W / 3L / 27D`, score `0.484`
+- shortlist one-hot policy, raw logits, shortlist-count fix
+  `2W / 3L / 27D`, score `0.484`
+- shortlist one-hot policy, softmax reranking, shortlist-count fix
+  `2W / 4L / 26D`, score `0.469`
+
+### Interpretation
+
+This was still a useful result even though it was not a win:
+
+- the feature-count mismatch was real
+- fixing it removed a clear avoidable failure mode
+- calibrated reranking was safer than the old raw-logit path on the first seed family
+- but it still did not create a stable edge on independent seeds
+
+So the online problem was not just inference calibration.
+
+## 2026-05-01: Broad Candidate-Score Regression (`exp7`)
+
+### Motivation
+
+The next idea was to stop asking a grouped classifier to act like a scalar move scorer.
+
+Instead:
+
+- rerun the teacher search
+- keep teacher root-score deltas per candidate
+- train a pointwise regressor directly on move desirability
+
+This better matches how the runtime search loop actually consumes move scores.
+
+### Dataset
+
+Source:
+
+- `exp6-distill-early-top6-*`
+
+Converted with:
+
+- `scripts/export-candidate-score-dataset.js`
+- target field: `targetScoreDelta`
+- search scale: `300`
+
+Totals:
+
+- `21982` candidate samples
+- `589` positions
+- average legal candidates per position: about `37.3`
+
+### Offline Result
+
+Models:
+
+- `exp7-candidate-score-linear`
+  RMSE `0.1142`, Pearson `0.9392`
+- `exp7-candidate-score-mlp256`
+  RMSE `0.0723`, Pearson `0.9762`
+
+This was one of the strongest offline fits in the repo so far.
+
+### Online Result
+
+Matched seeds `exp6sl1..exp6sl3`, `60ms`, `3` games per seed per color:
+
+- root-only top-`6` reranking, weight `200`
+  `1W / 1L / 16D`, score `0.500`
+- root-only full-list reranking, weight `200`
+  `1W / 2L / 15D`, score `0.472`
+- root-only top-`6` reranking, weight `80`
+  `1W / 1L / 16D`, score `0.500`
+
+### Interpretation
+
+This was another strong negative result:
+
+- the model clearly learned the teacher root-score structure offline
+- but even a well-fit pointwise scorer did not convert into a clear live strength gain
+
+That made the remaining gap look even more like search integration dynamics rather than simple target quality.
+
+## 2026-05-01: Shortlist-Aligned Candidate-Score Regression (`exp8`)
+
+### Motivation
+
+The broad candidate-score regressor still trained on full candidate lists, while the runtime reranker usually only touches a top shortlist.
+
+So the next step was to align everything:
+
+- teacher root scores restricted to the runtime top-`6` shortlist
+- candidate features encoded with shortlist count
+- runtime reranking using the same shortlist-count semantics
+
+### Dataset
+
+Distilled shortlist export:
+
+- `589` positions
+- `3517` candidate samples
+- average candidates per position: about `5.98`
+
+Teacher settings:
+
+- teacher: `Variant ML Hybrid`
+- move time: `140ms`
+- max depth: `5`
+- soft-target temperature: `80`
+- teacher target top-`K`: `6`
+- runtime shortlist top-`K`: `6`
+
+### Offline Result
+
+Models:
+
+- `exp8-candidate-score-linear`
+  RMSE `0.1846`, Pearson `0.8553`
+- `exp8-candidate-score-mlp256`
+  RMSE `0.1661`, Pearson `0.8853`
+
+This was weaker offline than the broader `exp7` regressor, which is expected because it traded dataset size for alignment.
+
+### Online Result
+
+Matched seeds `exp6sl1..exp6sl3`, `60ms`, `3` games per seed per color:
+
+- shortlist-aligned candidate-score regressor, root-only top-`6`, shortlist-count mode, weight `200`
+  `0W / 1L / 17D`, score `0.472`
+
+### Interpretation
+
+This experiment tightened the entire loop:
+
+- same shortlist at train time and runtime
+- same legal-move-count semantics
+- direct teacher root-score supervision
+
+And it still did not produce a live gain.
+
+That is a valuable conclusion:
+
+- we are no longer losing obvious performance to careless train/runtime mismatch
+- the next step probably needs richer search-aware ranking targets or different integration objectives, not just more of the same data
+
+## 2026-05-01: Pairwise Move Ranking (`exp9`)
+
+### Motivation
+
+The next question was whether the failure mode was still partly objective mismatch.
+
+Value regression learns position quality.
+Listwise policy learns "which move wins this candidate set."
+Candidate-score regression learns an absolute move score.
+
+But move ordering is often even simpler:
+
+- prefer move `A` over move `B`
+
+So the next path trained a scalar candidate scorer with a weighted pairwise ranking loss instead of one-hot imitation or pointwise score regression.
+
+### Dataset Variants
+
+Both datasets came from the shortlist-aligned distillation set `exp8`.
+
+Two pairwise constructions were exported:
+
+- `best_vs_rest`
+  only compare the teacher-best move against each alternative
+- `all_pairs`
+  compare every ordered candidate pair
+
+Both used score-gap weighting by default.
+
+Counts:
+
+- `best_vs_rest`
+  `2928` total pairs
+- `all_pairs`
+  `8766` total pairs
+
+### Offline Result
+
+Models:
+
+- `exp9-bestrest-pairwise-mlp256`
+  - validation pair accuracy `0.9542`
+  - held-out top-1 reconstruction `0.8729`
+- `exp9-allpairs-pairwise-mlp256`
+  - validation pair accuracy `0.9559`
+  - held-out top-1 reconstruction `0.9153`
+
+This was the strongest held-out move-ordering fidelity in the repo so far.
+
+### Online Result
+
+Short tuning family `exp9pa1..exp9pa3`, `60ms`, `2` games per seed per color:
+
+- baseline `Variant ML Hybrid` vs `search`
+  `1W / 1L / 10D`, score `0.500`
+- `all_pairs`, root-only top-`6`, shortlist-count mode, weight `20`
+  `1W / 1L / 10D`, score `0.500`
+- `all_pairs`, root-only top-`6`, shortlist-count mode, weight `40`
+  `0W / 1L / 11D`, score `0.458`
+- `all_pairs`, root-only top-`6`, shortlist-count mode, weight `80`
+  `1W / 1L / 10D`, score `0.500`
+- `best_vs_rest`, root-only top-`6`, shortlist-count mode, weight `20`
+  `3W / 1L / 8D`, score `0.583`
+
+Independent family `exp6sv1..exp6sv4`, `60ms`, `4` games per seed per color:
+
+- baseline `Variant ML Hybrid` vs `search`
+  `2W / 3L / 27D`, score `0.484`
+- `best_vs_rest`, root-only top-`6`, shortlist-count mode, weight `20`
+  `2W / 3L / 27D`, score `0.484`
+
+### Interpretation
+
+This was another important result:
+
+- the pairwise loss clearly improved offline ordering quality
+- `all_pairs` generalized best offline
+- a `best_vs_rest` model produced the best short-run live spike of this round
+- but that spike disappeared on the independent confirmatory seed family
+
+So pairwise ranking improved the modeling story and the offline metrics, but still did not produce a stable online edge.
+
+## 2026-05-01: Probability-Gap Pairwise Weighting (`exp10`)
+
+### Motivation
+
+The previous pairwise run weighted comparisons by teacher score gaps.
+
+That may overemphasize numerically large search-score differences that do not always translate cleanly into better ordering decisions.
+
+So the next variation used:
+
+- `best_vs_rest`
+- probability-gap weighting instead of score-gap weighting
+
+### Offline Result
+
+Model:
+
+- `exp10-bestrest-probgap-mlp256`
+
+Validation:
+
+- pair accuracy `0.9542`
+- held-out top-1 reconstruction `0.8729`
+
+This landed almost exactly on top of the score-gap `best_vs_rest` run offline.
+
+### Online Result
+
+Short tuning family `exp9pa1..exp9pa3`, `60ms`, `2` games per seed per color:
+
+- `best_vs_rest`, probability-gap weighting, root-only top-`6`, shortlist-count mode, weight `20`
+  `0W / 1L / 11D`, score `0.458`
+
+### Interpretation
+
+This was useful because it narrowed the search:
+
+- weighting by score gap versus probability gap did not meaningfully change the offline picture
+- and it did not rescue the online result
+
+So the main issue still looks like search integration dynamics, not this specific pair-weight definition

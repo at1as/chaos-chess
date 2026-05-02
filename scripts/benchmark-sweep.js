@@ -74,6 +74,14 @@ function runColorBalancedSweep(config) {
     candidateOrderingWeight: config.candidateOrderingWeight === undefined ? null : config.candidateOrderingWeight,
     candidatePolicyWeight: config.candidatePolicyWeight === undefined ? null : config.candidatePolicyWeight,
     candidatePolicyMaxPly: config.candidatePolicyMaxPly === undefined ? null : config.candidatePolicyMaxPly,
+    candidatePolicyTopK: config.candidatePolicyTopK === undefined ? null : config.candidatePolicyTopK,
+    candidatePolicyUseSoftmax: config.candidatePolicyUseSoftmax === undefined ? null : config.candidatePolicyUseSoftmax,
+    candidatePolicyConfidenceThreshold: config.candidatePolicyConfidenceThreshold === undefined
+      ? null
+      : config.candidatePolicyConfidenceThreshold,
+    candidatePolicyUseShortlistCount: config.candidatePolicyUseShortlistCount === undefined
+      ? null
+      : config.candidatePolicyUseShortlistCount,
     referenceModelPath: config.referenceModelPath || null,
     referenceOrderingModelPath: config.referenceOrderingModelPath || null,
     referencePolicyModelPath: config.referencePolicyModelPath || null,
@@ -81,6 +89,14 @@ function runColorBalancedSweep(config) {
     referenceOrderingWeight: config.referenceOrderingWeight === undefined ? null : config.referenceOrderingWeight,
     referencePolicyWeight: config.referencePolicyWeight === undefined ? null : config.referencePolicyWeight,
     referencePolicyMaxPly: config.referencePolicyMaxPly === undefined ? null : config.referencePolicyMaxPly,
+    referencePolicyTopK: config.referencePolicyTopK === undefined ? null : config.referencePolicyTopK,
+    referencePolicyUseSoftmax: config.referencePolicyUseSoftmax === undefined ? null : config.referencePolicyUseSoftmax,
+    referencePolicyConfidenceThreshold: config.referencePolicyConfidenceThreshold === undefined
+      ? null
+      : config.referencePolicyConfidenceThreshold,
+    referencePolicyUseShortlistCount: config.referencePolicyUseShortlistCount === undefined
+      ? null
+      : config.referencePolicyUseShortlistCount,
     perSeed: [],
     totals: {
       totalGames: 0,
@@ -105,7 +121,11 @@ function runColorBalancedSweep(config) {
     modelBlendWeight: config.candidateBlendWeight,
     orderingWeight: config.candidateOrderingWeight,
     policyWeight: config.candidatePolicyWeight,
-    policyMaxPly: config.candidatePolicyMaxPly
+    policyMaxPly: config.candidatePolicyMaxPly,
+    policyTopK: config.candidatePolicyTopK,
+    policyUseSoftmax: config.candidatePolicyUseSoftmax,
+    policyConfidenceThreshold: config.candidatePolicyConfidenceThreshold,
+    policyUseShortlistCount: config.candidatePolicyUseShortlistCount
   });
   const referenceOptions = buildSideOptions({
     valueModelPath: config.referenceModelPath,
@@ -114,7 +134,11 @@ function runColorBalancedSweep(config) {
     modelBlendWeight: config.referenceBlendWeight,
     orderingWeight: config.referenceOrderingWeight,
     policyWeight: config.referencePolicyWeight,
-    policyMaxPly: config.referencePolicyMaxPly
+    policyMaxPly: config.referencePolicyMaxPly,
+    policyTopK: config.referencePolicyTopK,
+    policyUseSoftmax: config.referencePolicyUseSoftmax,
+    policyConfidenceThreshold: config.referencePolicyConfidenceThreshold,
+    policyUseShortlistCount: config.referencePolicyUseShortlistCount
   });
 
   for (const seed of seeds) {
@@ -218,13 +242,25 @@ function main(argv) {
     candidateOrderingWeight: args["candidate-ordering-weight"] ? Number(args["candidate-ordering-weight"]) : undefined,
     candidatePolicyWeight: args["candidate-policy-weight"] ? Number(args["candidate-policy-weight"]) : undefined,
     candidatePolicyMaxPly: args["candidate-policy-max-ply"] ? Number(args["candidate-policy-max-ply"]) : undefined,
+    candidatePolicyTopK: args["candidate-policy-top-k"] ? Number(args["candidate-policy-top-k"]) : undefined,
+    candidatePolicyUseSoftmax: args["candidate-policy-use-softmax"],
+    candidatePolicyConfidenceThreshold: args["candidate-policy-confidence-threshold"]
+      ? Number(args["candidate-policy-confidence-threshold"])
+      : undefined,
+    candidatePolicyUseShortlistCount: args["candidate-policy-use-shortlist-count"],
     referenceModelPath: args["reference-model"] || null,
     referenceOrderingModelPath: args["reference-ordering-model"] || null,
     referencePolicyModelPath: args["reference-policy-model"] || null,
     referenceBlendWeight: args["reference-blend"] ? Number(args["reference-blend"]) : undefined,
     referenceOrderingWeight: args["reference-ordering-weight"] ? Number(args["reference-ordering-weight"]) : undefined,
     referencePolicyWeight: args["reference-policy-weight"] ? Number(args["reference-policy-weight"]) : undefined,
-    referencePolicyMaxPly: args["reference-policy-max-ply"] ? Number(args["reference-policy-max-ply"]) : undefined
+    referencePolicyMaxPly: args["reference-policy-max-ply"] ? Number(args["reference-policy-max-ply"]) : undefined,
+    referencePolicyTopK: args["reference-policy-top-k"] ? Number(args["reference-policy-top-k"]) : undefined,
+    referencePolicyUseSoftmax: args["reference-policy-use-softmax"],
+    referencePolicyConfidenceThreshold: args["reference-policy-confidence-threshold"]
+      ? Number(args["reference-policy-confidence-threshold"])
+      : undefined,
+    referencePolicyUseShortlistCount: args["reference-policy-use-shortlist-count"]
   });
   const outputPath = args.output ? path.resolve(process.cwd(), args.output) : null;
 

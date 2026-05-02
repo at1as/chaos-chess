@@ -11,7 +11,29 @@ const {
   createSeededRandom
 } = require("./ai-common.js");
 
+function parseBooleanFlag(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  switch (String(value).trim().toLowerCase()) {
+    case "0":
+    case "false":
+    case "no":
+    case "off":
+      return false;
+    default:
+      return true;
+  }
+}
+
 function buildSideOptions(config = {}) {
+  const policyUseSoftmax = parseBooleanFlag(config.policyUseSoftmax);
+
   if (
     !config.valueModelPath &&
     !config.orderingValueModelPath &&
@@ -19,7 +41,11 @@ function buildSideOptions(config = {}) {
     config.modelBlendWeight === undefined &&
     config.orderingWeight === undefined &&
     config.policyWeight === undefined &&
-    config.policyMaxPly === undefined
+    config.policyMaxPly === undefined &&
+    config.policyTopK === undefined &&
+    policyUseSoftmax === undefined &&
+    config.policyConfidenceThreshold === undefined &&
+    config.policyUseShortlistCount === undefined
   ) {
     return undefined;
   }
@@ -31,7 +57,11 @@ function buildSideOptions(config = {}) {
     modelBlendWeight: config.modelBlendWeight,
     orderingWeight: config.orderingWeight,
     policyWeight: config.policyWeight,
-    policyMaxPly: config.policyMaxPly
+    policyMaxPly: config.policyMaxPly,
+    policyTopK: config.policyTopK,
+    policyUseSoftmax: policyUseSoftmax,
+    policyConfidenceThreshold: config.policyConfidenceThreshold,
+    policyUseShortlistCount: parseBooleanFlag(config.policyUseShortlistCount)
   };
 }
 
@@ -114,7 +144,13 @@ function main(argv) {
       modelBlendWeight: args["white-blend"] ? Number(args["white-blend"]) : undefined,
       orderingWeight: args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined,
       policyWeight: args["white-policy-weight"] ? Number(args["white-policy-weight"]) : undefined,
-      policyMaxPly: args["white-policy-max-ply"] ? Number(args["white-policy-max-ply"]) : undefined
+      policyMaxPly: args["white-policy-max-ply"] ? Number(args["white-policy-max-ply"]) : undefined,
+      policyTopK: args["white-policy-top-k"] ? Number(args["white-policy-top-k"]) : undefined,
+      policyUseSoftmax: parseBooleanFlag(args["white-policy-use-softmax"]),
+      policyConfidenceThreshold: args["white-policy-confidence-threshold"]
+        ? Number(args["white-policy-confidence-threshold"])
+        : undefined,
+      policyUseShortlistCount: parseBooleanFlag(args["white-policy-use-shortlist-count"])
     }),
     blackOptions: buildSideOptions({
       valueModelPath: args["black-model"] || args.model || null,
@@ -123,7 +159,13 @@ function main(argv) {
       modelBlendWeight: args["black-blend"] ? Number(args["black-blend"]) : undefined,
       orderingWeight: args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined,
       policyWeight: args["black-policy-weight"] ? Number(args["black-policy-weight"]) : undefined,
-      policyMaxPly: args["black-policy-max-ply"] ? Number(args["black-policy-max-ply"]) : undefined
+      policyMaxPly: args["black-policy-max-ply"] ? Number(args["black-policy-max-ply"]) : undefined,
+      policyTopK: args["black-policy-top-k"] ? Number(args["black-policy-top-k"]) : undefined,
+      policyUseSoftmax: parseBooleanFlag(args["black-policy-use-softmax"]),
+      policyConfidenceThreshold: args["black-policy-confidence-threshold"]
+        ? Number(args["black-policy-confidence-threshold"])
+        : undefined,
+      policyUseShortlistCount: parseBooleanFlag(args["black-policy-use-shortlist-count"])
     })
   });
 

@@ -132,6 +132,13 @@ There are now two training paths:
 - a dependency-light reference trainer in plain Python
 - a `PyTorch` trainer that can use `MPS` automatically on Apple Silicon when the backend is available
 
+The newer search-guidance experiments also include:
+
+- calibrated shortlist reranking with softmax/confidence controls
+- pointwise candidate-score regression from teacher root scores
+- shortlist-aligned distillation runs where the model sees the same top-`K` move set the runtime reranker sees
+- pairwise move-ranking models trained directly on teacher-preferred move comparisons
+
 ### Current ML Status
 
 What works today:
@@ -142,6 +149,8 @@ What works today:
 - candidate-move policy export
 - offline evaluation
 - model-guided search experiments
+- calibrated policy-ordering experiments with explicit train/runtime alignment controls
+- candidate-score regression experiments over teacher root scores
 - a browser-exposed ML-backed variant engine built from a curated trained model
 
 What does **not** work yet:
@@ -149,6 +158,9 @@ What does **not** work yet:
 - the learned engine is still only modestly stronger than the plain variant-search baseline
 - the ML-backed engine is still early-stage and nowhere near Stockfish-level strength on classic chess
 - the newer policy-ordering model is strong offline, but not yet consistently above the current value-hybrid in independent live benchmarks
+- the newer candidate-score regressors fit teacher root scores very well offline, but still have not produced a clear live strength gain
+
+One methodological note matters here: because the search engines are wall-clock bounded, benchmark sweeps must be run sequentially. Parallel engine matches distort the effective think time and are not treated as valid evidence.
 
 That is important context: this repo already contains a real ML pipeline and a playable ML-backed variant engine, but the learned evaluator is still early rather than fully mature.
 
@@ -189,6 +201,24 @@ Export train/validation policy datasets:
 make export-policy-dataset
 ```
 
+Export train/validation soft-policy distillation datasets:
+
+```bash
+make export-policy-distill-dataset
+```
+
+Export train/validation candidate-score datasets from teacher root scores:
+
+```bash
+make export-candidate-score-dataset
+```
+
+Export train/validation pairwise move-ranking datasets:
+
+```bash
+make export-pairwise-policy-dataset
+```
+
 Train a baseline value model:
 
 ```bash
@@ -211,6 +241,18 @@ Train a grouped policy-ordering model with PyTorch:
 
 ```bash
 make train-policy-torch
+```
+
+Train a soft-policy distillation model with PyTorch:
+
+```bash
+make train-policy-distill-torch
+```
+
+Train a pairwise move-ranking model with PyTorch:
+
+```bash
+make train-policy-pairwise-torch
 ```
 
 Evaluate a saved value model:
@@ -237,10 +279,15 @@ The lower-level scripts are also useful directly when running experiments:
 node scripts/selfplay.js --games 40 --rules random --white search --black heuristic --encoding canonical
 node scripts/export-dataset.js --input ml/datasets/selfplay.jsonl --search-weight 1 --outcome-weight 0
 node scripts/export-policy-dataset.js --input ml/datasets/selfplay.jsonl --label-field teacher
+node scripts/export-policy-distill-dataset.js --input ml/datasets/selfplay.jsonl --teacher-model assets/models/variant-ml-hybrid-v1.json --teacher-blend 0.10
+node scripts/export-candidate-score-dataset.js --train-input ml/datasets/policy-distill-train.jsonl --validation-input ml/datasets/policy-distill-validation.jsonl --score-field targetScoreDelta
+node scripts/export-pairwise-policy-dataset.js --train-input ml/datasets/policy-distill-train.jsonl --validation-input ml/datasets/policy-distill-validation.jsonl --pair-mode best_vs_rest
 python3 scripts/train-value-model.py --model linear --epochs 20
 ./.venv/bin/python scripts/train-value-model-torch.py --model mlp --hidden-size 64 --epochs 24
 ./.venv/bin/python scripts/train-value-model-torch.py --model dense --hidden-sizes 128,64 --epochs 20
 ./.venv/bin/python scripts/train-policy-model-torch.py --model mlp --hidden-size 256 --epochs 18
+./.venv/bin/python scripts/train-policy-distill-torch.py --model mlp --hidden-size 256 --epochs 18
+./.venv/bin/python scripts/train-policy-pairwise-torch.py --model mlp --hidden-size 256 --epochs 24
 python3 scripts/eval-value-model.py --model ml/models/value-model.json
 node scripts/benchmark.js --games 12 --rules random --white search --black heuristic
 node scripts/benchmark-sweep.js --candidate hybrid --reference search --games-per-seed 8 --seeds s1,s2,s3

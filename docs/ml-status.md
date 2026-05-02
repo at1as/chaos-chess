@@ -17,6 +17,9 @@ What exists today:
 - zero-dependency baseline training and evaluation scripts
 - a PyTorch training path for larger experiments
 - a benchmark harness for quantitative comparisons
+- calibrated shortlist policy-ordering controls for isolating train/runtime mismatch
+- a candidate-score regression path built directly from teacher root scores
+- a pairwise move-ranking path built from teacher-preferred candidate comparisons
 
 That means the repo already covers environment design, search-based data generation, feature encoding, baseline model training, offline evaluation, and hybrid-search experiments. The missing piece is a learned evaluator that is clearly useful in actual play.
 
@@ -228,22 +231,94 @@ Primary files:
 
 - `scripts/export-policy-dataset.js`
 - `scripts/train-policy-model-torch.py`
+- `scripts/export-policy-distill-dataset.js`
+- `scripts/train-policy-distill-torch.py`
 
 What exists today:
 
 - self-play trajectories can be expanded into full legal candidate sets
 - teacher-move labels can supervise candidate ranking
+- teacher root-score distributions can supervise soft policy distillation
 - the Torch trainer now supports grouped, listwise cross-entropy over legal-move sets
+- the repo also now supports soft-target policy distillation against full teacher root distributions
 - runtime search can consume a trained policy model as move-ordering guidance
 - integration can be limited by ply depth so the model only influences the top of the tree
+- integration can also restrict policy reranking to only the top heuristic candidates
+- runtime policy guidance can now also:
+  - convert shortlist logits through softmax before reranking
+  - require a confidence gap before applying policy pressure
+  - pass shortlist size instead of full legal-move count into candidate features when the model was trained that way
 
 Important implementation details:
 
 - policy training is grouped by `positionId`, not flattened blindly across candidates
 - the current trainer optimizes teacher-move top-1 accuracy rather than candidate-level binary loss
+- the distillation trainer optimizes a softmax-cross-entropy objective against teacher root distributions
 - the current best policy model is a simple `mlp` with hidden size `256`
 
 This is the repo's most ambitious ML component so far. It is closer to "learned search guidance" than simple value regression.
+
+### 6c. Candidate-Score Regression
+
+Primary files:
+
+- `scripts/candidate-score-data.js`
+- `scripts/export-candidate-score-dataset.js`
+- `scripts/train-value-model-torch.py`
+
+What exists today:
+
+- teacher root-score distributions can now be converted into pointwise candidate-score regression datasets
+- those datasets can be derived from broad root distributions or shortlist-aligned distillation sets
+- the shared Torch value trainer can fit those targets because the runtime JSON model format is the same
+- runtime search can consume those trained models as move-ordering scorers
+
+Why it exists:
+
+- grouped policy training learns "which move is best in this list"
+- runtime ordering often consumes an independent scalar per move
+- candidate-score regression tries to learn that scalar directly instead of relying on grouped logits plus post-hoc calibration
+
+Current finding:
+
+- this path produced the strongest offline candidate-score fit so far
+- but it still has not produced a stable live strength gain over the current value-hybrid baseline
+
+### 6d. Pairwise Move Ranking
+
+Primary files:
+
+- `scripts/pairwise-policy-data.js`
+- `scripts/export-pairwise-policy-dataset.js`
+- `scripts/train-policy-pairwise-torch.py`
+
+What exists today:
+
+- shortlist-aligned teacher candidate sets can now be converted into pairwise ranking examples
+- the exporter supports both:
+  - `best_vs_rest`
+  - `all_pairs`
+- pairwise weights can be derived from:
+  - teacher score gaps
+  - teacher probability gaps
+- the Torch trainer learns a scalar candidate scorer with weighted logistic ranking loss
+- validation can now report both:
+  - pairwise ranking accuracy
+  - reconstructed candidate-list top-1 accuracy on held-out positions
+
+Why it exists:
+
+- move ordering is fundamentally a relative preference problem
+- a pairwise objective matches "prefer A over B" more directly than one-hot teacher imitation
+- it also matches the runtime requirement that the model emit a scalar score per candidate
+
+Current finding:
+
+- the best pairwise model so far is the shortlist-aligned `all_pairs` MLP
+- offline it reached roughly:
+  - validation pair accuracy `0.956`
+  - held-out top-1 reconstruction `0.915`
+- online, even that stronger ranking signal still flattened back toward parity in sequential color-balanced sweeps
 
 ### 7. Shared-Model Strategy
 
@@ -270,7 +345,11 @@ Evidence:
 - asymmetric trajectory generation plus full teacher labeling improved outcome diversity without giving up score coverage
 - linear and MLP baselines both fit the value targets meaningfully
 - the best offline model so far is the `exp5` Torch `mlp` trained on teacher-labeled canonical data, with validation correlation around `0.939`
-- the best policy-ordering model so far reaches held-out teacher-move top-1 accuracy around `0.731`
+- the best policy-ordering model so far reaches held-out teacher-move top-1 accuracy around `0.754`
+- soft-policy distillation was implemented and benchmarked, but did not clearly outperform the one-hot listwise policy path
+- a broad candidate-score regressor reached validation correlation around `0.976` on teacher root-score deltas
+- a shortlist-aligned candidate-score regressor was also built to match the runtime top-`K` reranker exactly
+- a shortlist-aligned pairwise ranking model reached held-out top-1 reconstruction around `0.915` with pairwise accuracy around `0.956`
 
 But:
 
@@ -279,6 +358,9 @@ But:
 - a deeper stacked `dense` network did not beat the simpler one-hidden-layer Torch `mlp` on the same `exp4` teacher set
 - the new policy model is strong offline, but its online gain is still sensitive to how deep in the search tree it is allowed to steer ordering
 - the best current policy integration is `root-only` guidance with a very light weight, and even that is not yet consistently above baseline on independent seed families
+- disagreement-focused policy fine-tuning improved offline top-1 again, but still did not convert into a stable live edge
+- candidate-score regression improved offline fit again, but still flattened to parity or mild underperformance in live search
+- pairwise ranking improved offline move-ordering fidelity again, but still did not produce a stable live edge on independent seeds
 
 So the project is past the "toy ML scaffolding" stage and now has a real model-backed engine in the product, but it is still early rather than decisively strong.
 
@@ -312,6 +394,7 @@ What exists today:
 - a color-balanced sweep runner for candidate-vs-reference engine comparisons
 - reproducible seeded rulesets across both color assignments
 - a public markdown log for recording benchmark outputs and observations
+- an explicit methodology rule that wall-clock bounded searches must be benchmarked sequentially, not in parallel
 
 This matters because tiny asymmetric benchmark runs are too noisy to guide ML decisions. The repo now includes a cleaner path for testing whether a model is actually helping or just fitting labels offline.
 
@@ -347,7 +430,7 @@ Missing pieces:
 - a committed production checkpoint
 - model inference runtime inside the browser engine
 - a learned evaluator that clearly improves play strength
-- a stronger training stack for larger experiments, likely with a real ML framework
+- a training objective that converts strong offline fit into a clear live edge
 
 So the current state is:
 

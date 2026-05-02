@@ -12,6 +12,26 @@ const {
   createSeededRandom
 } = require("./ai-common.js");
 
+function parseBooleanFlag(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  switch (String(value).trim().toLowerCase()) {
+    case "0":
+    case "false":
+    case "no":
+    case "off":
+      return false;
+    default:
+      return true;
+  }
+}
+
 const args = parseArgs(process.argv.slice(2));
 const games = Number(args.games) || 4;
 const maxPlies = Number(args["max-plies"]) || 160;
@@ -38,6 +58,18 @@ const whitePolicyWeight = args["white-policy-weight"] ? Number(args["white-polic
 const blackPolicyWeight = args["black-policy-weight"] ? Number(args["black-policy-weight"]) : undefined;
 const whitePolicyMaxPly = args["white-policy-max-ply"] ? Number(args["white-policy-max-ply"]) : undefined;
 const blackPolicyMaxPly = args["black-policy-max-ply"] ? Number(args["black-policy-max-ply"]) : undefined;
+const whitePolicyTopK = args["white-policy-top-k"] ? Number(args["white-policy-top-k"]) : undefined;
+const blackPolicyTopK = args["black-policy-top-k"] ? Number(args["black-policy-top-k"]) : undefined;
+const whitePolicyUseSoftmax = parseBooleanFlag(args["white-policy-use-softmax"]);
+const blackPolicyUseSoftmax = parseBooleanFlag(args["black-policy-use-softmax"]);
+const whitePolicyConfidenceThreshold = args["white-policy-confidence-threshold"]
+  ? Number(args["white-policy-confidence-threshold"])
+  : undefined;
+const blackPolicyConfidenceThreshold = args["black-policy-confidence-threshold"]
+  ? Number(args["black-policy-confidence-threshold"])
+  : undefined;
+const whitePolicyUseShortlistCount = parseBooleanFlag(args["white-policy-use-shortlist-count"]);
+const blackPolicyUseShortlistCount = parseBooleanFlag(args["black-policy-use-shortlist-count"]);
 const teacherBot = args.teacher || null;
 const teacherModelPath = args["teacher-model"] || null;
 const teacherOrderingModelPath = args["teacher-ordering-model"] || null;
@@ -46,6 +78,12 @@ const teacherBlend = args["teacher-blend"] ? Number(args["teacher-blend"]) : und
 const teacherOrderingWeight = args["teacher-ordering-weight"] ? Number(args["teacher-ordering-weight"]) : undefined;
 const teacherPolicyWeight = args["teacher-policy-weight"] ? Number(args["teacher-policy-weight"]) : undefined;
 const teacherPolicyMaxPly = args["teacher-policy-max-ply"] ? Number(args["teacher-policy-max-ply"]) : undefined;
+const teacherPolicyTopK = args["teacher-policy-top-k"] ? Number(args["teacher-policy-top-k"]) : undefined;
+const teacherPolicyUseSoftmax = parseBooleanFlag(args["teacher-policy-use-softmax"]);
+const teacherPolicyConfidenceThreshold = args["teacher-policy-confidence-threshold"]
+  ? Number(args["teacher-policy-confidence-threshold"])
+  : undefined;
+const teacherPolicyUseShortlistCount = parseBooleanFlag(args["teacher-policy-use-shortlist-count"]);
 const teacherMoveTime = args["teacher-move-time"] ? Number(args["teacher-move-time"]) : moveTime;
 const teacherMaxDepth = args["teacher-max-depth"] ? Number(args["teacher-max-depth"]) : maxDepth;
 const seed = args.seed || "chaos-chess-selfplay";
@@ -73,7 +111,11 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
       modelBlendWeight: whiteBlend,
       orderingWeight: whiteOrderingWeight,
       policyWeight: whitePolicyWeight,
-      policyMaxPly: whitePolicyMaxPly
+      policyMaxPly: whitePolicyMaxPly,
+      policyTopK: whitePolicyTopK,
+      policyUseSoftmax: whitePolicyUseSoftmax,
+      policyConfidenceThreshold: whitePolicyConfidenceThreshold,
+      policyUseShortlistCount: whitePolicyUseShortlistCount
     } : undefined,
     blackOptions: blackModelPath || blackOrderingModelPath || blackPolicyModelPath ? {
       valueModel: blackModelPath ? loadModelPayload(blackModelPath) : undefined,
@@ -82,7 +124,11 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
       modelBlendWeight: blackBlend,
       orderingWeight: blackOrderingWeight,
       policyWeight: blackPolicyWeight,
-      policyMaxPly: blackPolicyMaxPly
+      policyMaxPly: blackPolicyMaxPly,
+      policyTopK: blackPolicyTopK,
+      policyUseSoftmax: blackPolicyUseSoftmax,
+      policyConfidenceThreshold: blackPolicyConfidenceThreshold,
+      policyUseShortlistCount: blackPolicyUseShortlistCount
     } : undefined,
     teacherBot,
     teacherOptions: teacherBot ? {
@@ -93,6 +139,10 @@ for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
       orderingWeight: teacherOrderingWeight,
       policyWeight: teacherPolicyWeight,
       policyMaxPly: teacherPolicyMaxPly,
+      policyTopK: teacherPolicyTopK,
+      policyUseSoftmax: teacherPolicyUseSoftmax,
+      policyConfidenceThreshold: teacherPolicyConfidenceThreshold,
+      policyUseShortlistCount: teacherPolicyUseShortlistCount,
       moveTime: teacherMoveTime,
       maxDepth: teacherMaxDepth
     } : undefined,
@@ -131,6 +181,18 @@ fs.writeFileSync(metadataPath, JSON.stringify({
   blackPolicyWeight: Number.isFinite(blackPolicyWeight) ? blackPolicyWeight : null,
   whitePolicyMaxPly: Number.isFinite(whitePolicyMaxPly) ? whitePolicyMaxPly : null,
   blackPolicyMaxPly: Number.isFinite(blackPolicyMaxPly) ? blackPolicyMaxPly : null,
+  whitePolicyTopK: Number.isFinite(whitePolicyTopK) ? whitePolicyTopK : null,
+  blackPolicyTopK: Number.isFinite(blackPolicyTopK) ? blackPolicyTopK : null,
+  whitePolicyUseSoftmax: whitePolicyUseSoftmax === undefined ? null : whitePolicyUseSoftmax,
+  blackPolicyUseSoftmax: blackPolicyUseSoftmax === undefined ? null : blackPolicyUseSoftmax,
+  whitePolicyConfidenceThreshold: Number.isFinite(whitePolicyConfidenceThreshold)
+    ? whitePolicyConfidenceThreshold
+    : null,
+  blackPolicyConfidenceThreshold: Number.isFinite(blackPolicyConfidenceThreshold)
+    ? blackPolicyConfidenceThreshold
+    : null,
+  whitePolicyUseShortlistCount: whitePolicyUseShortlistCount === undefined ? null : whitePolicyUseShortlistCount,
+  blackPolicyUseShortlistCount: blackPolicyUseShortlistCount === undefined ? null : blackPolicyUseShortlistCount,
   teacherBot,
   teacherModelPath,
   teacherOrderingModelPath,
@@ -139,6 +201,12 @@ fs.writeFileSync(metadataPath, JSON.stringify({
   teacherOrderingWeight: Number.isFinite(teacherOrderingWeight) ? teacherOrderingWeight : null,
   teacherPolicyWeight: Number.isFinite(teacherPolicyWeight) ? teacherPolicyWeight : null,
   teacherPolicyMaxPly: Number.isFinite(teacherPolicyMaxPly) ? teacherPolicyMaxPly : null,
+  teacherPolicyTopK: Number.isFinite(teacherPolicyTopK) ? teacherPolicyTopK : null,
+  teacherPolicyUseSoftmax: teacherPolicyUseSoftmax === undefined ? null : teacherPolicyUseSoftmax,
+  teacherPolicyConfidenceThreshold: Number.isFinite(teacherPolicyConfidenceThreshold)
+    ? teacherPolicyConfidenceThreshold
+    : null,
+  teacherPolicyUseShortlistCount: teacherPolicyUseShortlistCount === undefined ? null : teacherPolicyUseShortlistCount,
   teacherMoveTime,
   teacherMaxDepth: teacherMaxDepth || null,
   featureEncoding,

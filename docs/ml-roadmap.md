@@ -35,6 +35,7 @@ Why this is next:
 - dataset export now exists
 - baseline training and evaluation now exist
 - value- and policy-guided search experiments now exist
+- candidate-score regression experiments now exist
 
 This should still be one shared model for all rule combinations, not one model per variant.
 
@@ -136,7 +137,11 @@ Possible follow-ups:
 
 - self-play loops that refresh the dataset from stronger engines
 - policy plus value heads
+- pairwise or regret-style ranking targets for move ordering
+- direct candidate-score targets derived from exact runtime shortlists
+- confidence-aware gating for pairwise scorers based on learned margin estimates
 - depth-aware policy integration
+- search-state-matched policy data instead of only played-game root positions
 - lightweight MCTS experiments
 - search distillation into smaller fast models
 - rule-specific ablation studies
@@ -165,8 +170,10 @@ The next concrete implementation order should be:
 2. compare teacher-data quality, target designs, and model sizes
 3. improve hybrid integration through ordering and blended evaluation
 4. benchmark on larger color-balanced match sets, not just tiny smoke comparisons
-5. tune depth-aware policy integration and other distribution-shift defenses
-6. explore joint policy-plus-value models or richer search targets if parity persists
-7. expose new model-backed engines in the browser UI only after they are credibly useful
+5. keep those match sets sequential when search is wall-clock bounded; parallel sweeps are not valid evidence
+6. tune depth-aware policy integration and other distribution-shift defenses
+7. generate policy data from the exact states search struggles with, not just from played trajectories
+8. explore regret-based or margin-calibrated ranking targets on top of the current pairwise path
+9. expose new model-backed engines in the browser UI only after they are credibly useful
 
 That is the shortest path from today's codebase to a genuine hybrid ML engine.

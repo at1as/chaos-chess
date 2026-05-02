@@ -589,6 +589,21 @@
     return 0;
   }
 
+  function serializeCandidateEntry(candidate, score, rules) {
+    return {
+      move: {
+        from: { x: candidate.move.from.x, y: candidate.move.from.y },
+        to: { x: candidate.move.to.x, y: candidate.move.to.y },
+        promotion: candidate.promotion
+      },
+      uci: engine.coordToAlgebraic(candidate.move.from.x, candidate.move.from.y) +
+        engine.coordToAlgebraic(candidate.move.to.x, candidate.move.to.y) +
+        (candidate.promotion ? String(candidate.promotion).toLowerCase() : ""),
+      score: score,
+      descriptor: engine.moveDescriptor(candidate.move, rules, candidate.promotion)
+    };
+  }
+
   function chooseHeuristicMove(state, options) {
     var candidates = expandMoveCandidates(state);
     var perspectiveColor = state.turn;
@@ -687,6 +702,36 @@
     return Boolean(error && error.code === SEARCH_TIMEOUT_CODE);
   }
 
+  function softmax(values) {
+    var maxValue;
+    var exponentials;
+    var total;
+
+    if (!Array.isArray(values) || values.length === 0) {
+      return [];
+    }
+
+    maxValue = values.reduce(function selectMax(currentMax, value) {
+      return value > currentMax ? value : currentMax;
+    }, -Infinity);
+    exponentials = values.map(function mapExponential(value) {
+      return Math.exp(value - maxValue);
+    });
+    total = exponentials.reduce(function sumExponentials(sum, value) {
+      return sum + value;
+    }, 0);
+
+    if (!Number.isFinite(total) || total <= 0) {
+      return values.map(function uniformProbability() {
+        return 1 / values.length;
+      });
+    }
+
+    return exponentials.map(function normalize(value) {
+      return value / total;
+    });
+  }
+
   function checkSearchBudget(context) {
     context.nodes += 1;
 
@@ -730,29 +775,127 @@
     return score;
   }
 
+  function scoreCandidatesForOrdering(state, candidates, preferredCandidate) {
+    var rules = state.rules;
+    var scoredCandidates = candidates.map(function scoreCandidate(candidate) {
+      return {
+        candidate: candidate,
+        score: orderingScore(candidate, rules, preferredCandidate)
+      };
+    });
+
+    scoredCandidates.sort(function compareScoredCandidates(left, right) {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return compareCandidateMoves(
+        { move: left.candidate.move, promotion: left.candidate.promotion, rules: rules },
+        { move: right.candidate.move, promotion: right.candidate.promotion, rules: rules }
+      );
+    });
+
+    return scoredCandidates;
+  }
+
+  function applyPolicyAdjustments(state, scoredCandidates, legalMoveCount, context) {
+    var rules = state.rules;
+    var shortlistSize;
+    var policyLegalMoveCount;
+    var preparedPolicyVector = null;
+    var scoredShortlist = [];
+    var policyProbabilities;
+    var sortedProbabilities;
+    var confidenceGap;
+    var uniformProbability;
+
+    if (!context ||
+      !context.policyEvaluator ||
+      context.policyWeight === 0 ||
+      scoredCandidates.length === 0) {
+      return scoredCandidates;
+    }
+
+    shortlistSize = Math.min(scoredCandidates.length, context.policyTopK);
+
+    if (shortlistSize <= 0) {
+      return scoredCandidates;
+    }
+
+    if (typeof context.policyEvaluator.prepareStateVector === "function") {
+      preparedPolicyVector = context.policyEvaluator.prepareStateVector(state);
+    }
+
+    policyLegalMoveCount = context.policyUseShortlistCount ? shortlistSize : legalMoveCount;
+
+    scoredCandidates.slice(0, shortlistSize).forEach(function scorePolicyCandidate(entry) {
+      var policyScore = context.policyEvaluator(state, entry.candidate, {
+        legalMoveCount: policyLegalMoveCount,
+        stateVector: preparedPolicyVector
+      });
+
+      if (Number.isFinite(policyScore)) {
+        scoredShortlist.push({
+          entry: entry,
+          policyScore: policyScore
+        });
+      }
+    });
+
+    if (scoredShortlist.length === 0) {
+      return scoredCandidates;
+    }
+
+    if (context.policyUseSoftmax) {
+      policyProbabilities = softmax(scoredShortlist.map(function selectPolicyScore(item) {
+        return item.policyScore;
+      }));
+      sortedProbabilities = policyProbabilities.slice().sort(function compareProbabilities(left, right) {
+        return right - left;
+      });
+      confidenceGap = (sortedProbabilities[0] || 0) - (sortedProbabilities[1] || 0);
+
+      if (confidenceGap < context.policyConfidenceThreshold) {
+        return scoredCandidates;
+      }
+
+      uniformProbability = 1 / scoredShortlist.length;
+      scoredShortlist.forEach(function applyPolicyProbability(item, index) {
+        item.entry.score += (policyProbabilities[index] - uniformProbability) * context.policyWeight;
+      });
+    } else {
+      scoredShortlist.forEach(function applyRawPolicyScore(item) {
+        item.entry.score += item.policyScore * context.policyWeight;
+      });
+    }
+
+    scoredCandidates.sort(function comparePolicyAdjustedCandidates(left, right) {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return compareCandidateMoves(
+        { move: left.candidate.move, promotion: left.candidate.promotion, rules: rules },
+        { move: right.candidate.move, promotion: right.candidate.promotion, rules: rules }
+      );
+    });
+
+    return scoredCandidates;
+  }
+
   function orderCandidates(state, candidates, preferredCandidate, context, ply) {
     var rules = state.rules;
     var maximizing = !context || state.turn === context.rootColor;
     var orderingWeight = context ? context.orderingWeight : 0;
     var policyWeight = context ? context.policyWeight : 0;
     var policyMaxPly = context ? context.policyMaxPly : Infinity;
-    var preparedPolicyVector = null;
-
-    if (context &&
-      context.policyEvaluator &&
-      ply <= policyMaxPly &&
-      typeof context.policyEvaluator.prepareStateVector === "function") {
-      preparedPolicyVector = context.policyEvaluator.prepareStateVector(state);
-    }
-
-    var scoredCandidates = candidates.map(function scoreCandidate(candidate) {
-      var score = orderingScore(candidate, rules, preferredCandidate);
+    var scoredCandidates = scoreCandidatesForOrdering(state, candidates, preferredCandidate).map(function cloneEntry(entry) {
+      var score = entry.score;
       var nextState;
       var modelScore;
-      var policyScore;
 
       if (context && context.orderingEvaluator && orderingWeight !== 0) {
-        nextState = engine.applyMove(state, candidate.move, candidate.promotion);
+        nextState = engine.applyMove(state, entry.candidate.move, entry.candidate.promotion);
         modelScore = context.orderingEvaluator(nextState, context.rootColor);
 
         if (Number.isFinite(modelScore)) {
@@ -760,19 +903,8 @@
         }
       }
 
-      if (context && context.policyEvaluator && policyWeight !== 0 && ply <= policyMaxPly) {
-        policyScore = context.policyEvaluator(state, candidate, {
-          legalMoveCount: candidates.length,
-          stateVector: preparedPolicyVector
-        });
-
-        if (Number.isFinite(policyScore)) {
-          score += policyScore * policyWeight;
-        }
-      }
-
       return {
-        candidate: candidate,
+        candidate: entry.candidate,
         score: score
       };
     });
@@ -787,6 +919,13 @@
         { move: right.candidate.move, promotion: right.candidate.promotion, rules: rules }
       );
     });
+
+    if (context &&
+      context.policyEvaluator &&
+      policyWeight !== 0 &&
+      ply <= policyMaxPly) {
+      applyPolicyAdjustments(state, scoredCandidates, candidates.length, context);
+    }
 
     return scoredCandidates.map(function unwrapCandidate(entry) {
       return entry.candidate;
@@ -818,6 +957,10 @@
     var orderingWeight = Number(options && options.orderingWeight);
     var policyWeight = Number(options && options.policyWeight);
     var policyMaxPly = Number(options && options.policyMaxPly);
+    var policyTopK = Number(options && options.policyTopK);
+    var policyUseSoftmax = Boolean(options && options.policyUseSoftmax);
+    var policyConfidenceThreshold = Number(options && options.policyConfidenceThreshold);
+    var policyUseShortlistCount = Boolean(options && options.policyUseShortlistCount);
 
     if (!Number.isFinite(blendWeight)) {
       blendWeight = DEFAULT_MODEL_BLEND;
@@ -835,6 +978,14 @@
       policyMaxPly = Infinity;
     }
 
+    if (!Number.isFinite(policyTopK)) {
+      policyTopK = Infinity;
+    }
+
+    if (!Number.isFinite(policyConfidenceThreshold)) {
+      policyConfidenceThreshold = 0;
+    }
+
     return {
       rootColor: state.turn,
       deadlineMs: moveTime > 0 ? nowMs() + Math.max(40, moveTime - 5) : null,
@@ -847,7 +998,11 @@
       orderingWeight: orderingWeight,
       policyEvaluator: policyEvaluator,
       policyWeight: policyWeight,
-      policyMaxPly: policyMaxPly
+      policyMaxPly: policyMaxPly,
+      policyTopK: policyTopK,
+      policyUseSoftmax: policyUseSoftmax,
+      policyConfidenceThreshold: Math.max(0, policyConfidenceThreshold),
+      policyUseShortlistCount: policyUseShortlistCount
     };
   }
 
@@ -1009,6 +1164,7 @@
     var leafEvaluator;
     var orderingEvaluator;
     var policyEvaluator;
+    var completedRootScores = null;
 
     if (candidates.length === 0) {
       return null;
@@ -1060,6 +1216,7 @@
         completedBestCandidate = bestSelection.candidate;
         completedBestScore = bestSelection.score;
         completedDepth = depth;
+        completedRootScores = scoredCandidates.slice();
       } catch (error) {
         if (isSearchTimeout(error)) {
           break;
@@ -1088,7 +1245,12 @@
       score: completedBestScore,
       depth: completedDepth,
       nodes: context.nodes,
-      fallback: null
+      fallback: null,
+      rootCandidates: options && options.includeRootScores && completedRootScores
+        ? completedRootScores.map(function mapRootCandidate(entry) {
+          return serializeCandidateEntry(entry.candidate, entry.score, state.rules);
+        })
+        : null
     };
   }
 
@@ -1096,6 +1258,17 @@
     var result = searchPosition(state, options);
 
     return result ? result.move : null;
+  }
+
+  function rankRootCandidates(state, options) {
+    var topK = Number(options && options.topK);
+    var candidates = expandMoveCandidates(state);
+    var scored = scoreCandidatesForOrdering(state, candidates, null);
+    var limit = Number.isFinite(topK) && topK > 0 ? Math.min(scored.length, topK) : scored.length;
+
+    return scored.slice(0, limit).map(function mapScoredCandidate(entry) {
+      return serializeCandidateEntry(entry.candidate, entry.score, state.rules);
+    });
   }
 
   function StockfishAdapter(options) {
@@ -1229,6 +1402,10 @@
     this.orderingWeight = Number(config.orderingWeight);
     this.policyWeight = Number(config.policyWeight);
     this.policyMaxPly = Number(config.policyMaxPly);
+    this.policyTopK = Number(config.policyTopK);
+    this.policyUseSoftmax = Boolean(config.policyUseSoftmax);
+    this.policyConfidenceThreshold = Number(config.policyConfidenceThreshold);
+    this.policyUseShortlistCount = Boolean(config.policyUseShortlistCount);
     this.label = config.label || "Model Search";
     this.id = config.id || "variant-model-search";
     this.supportsRulesFn = typeof config.supportsRules === "function" ? config.supportsRules : null;
@@ -1262,7 +1439,11 @@
             orderingWeight: self.orderingWeight,
             policyModel: self.policyModel,
             policyWeight: self.policyWeight,
-            policyMaxPly: self.policyMaxPly
+            policyMaxPly: self.policyMaxPly,
+            policyTopK: self.policyTopK,
+            policyUseSoftmax: self.policyUseSoftmax,
+            policyConfidenceThreshold: self.policyConfidenceThreshold,
+            policyUseShortlistCount: self.policyUseShortlistCount
           }));
         } catch (error) {
           reject(error);
@@ -1306,6 +1487,9 @@
     createValueModelEvaluator: createValueModelEvaluator,
     chooseHeuristicMove: chooseHeuristicMove,
     chooseSearchMove: chooseSearchMove,
+    softmax: softmax,
+    applyPolicyAdjustments: applyPolicyAdjustments,
+    rankRootCandidates: rankRootCandidates,
     searchPosition: searchPosition
   };
 }));
