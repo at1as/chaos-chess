@@ -37,4 +37,30 @@ test("playGame can attach teacher search labels to samples", () => {
   assert.equal(result.samples[0].teacherEngine, "search");
   assert.equal(typeof result.samples[0].teacherScore, "number");
   assert.equal(typeof result.samples[0].teacherMove, "string");
+  assert.equal(Array.isArray(result.samples[0].stateSnapshot.board), true);
+  assert.equal(result.samples[0].stateSnapshot.board.length, 64);
+});
+
+test("serializeState and restoreState preserve a playable engine state", () => {
+  const original = chess.createStateFromPieces([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "p", square: "d5" },
+    { color: "b", type: "p", square: "e5" }
+  ], {
+    turn: "w",
+    rules: {
+      friendlyFire: true,
+      kamikaze: false,
+      wrapAround: true,
+      doubleDirectionPawns: false,
+      jumpPawns: true
+    }
+  });
+  const restored = aiCommon.restoreState(aiCommon.serializeState(original));
+
+  assert.deepEqual(restored.rules, original.rules);
+  assert.equal(restored.turn, original.turn);
+  assert.equal(restored.board.length, 64);
+  assert.equal(chess.getAllLegalMoves(restored).length > 0, true);
 });

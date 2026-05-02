@@ -15,8 +15,11 @@ function buildSideOptions(config = {}) {
   if (
     !config.valueModelPath &&
     !config.orderingValueModelPath &&
+    !config.policyModelPath &&
     config.modelBlendWeight === undefined &&
-    config.orderingWeight === undefined
+    config.orderingWeight === undefined &&
+    config.policyWeight === undefined &&
+    config.policyMaxPly === undefined
   ) {
     return undefined;
   }
@@ -24,8 +27,11 @@ function buildSideOptions(config = {}) {
   return {
     valueModel: config.valueModelPath ? loadModelPayload(config.valueModelPath) : undefined,
     orderingValueModel: config.orderingValueModelPath ? loadModelPayload(config.orderingValueModelPath) : undefined,
+    policyModel: config.policyModelPath ? loadModelPayload(config.policyModelPath) : undefined,
     modelBlendWeight: config.modelBlendWeight,
-    orderingWeight: config.orderingWeight
+    orderingWeight: config.orderingWeight,
+    policyWeight: config.policyWeight,
+    policyMaxPly: config.policyMaxPly
   };
 }
 
@@ -104,14 +110,20 @@ function main(argv) {
     whiteOptions: buildSideOptions({
       valueModelPath: args["white-model"] || args.model || null,
       orderingValueModelPath: args["white-ordering-model"] || null,
+      policyModelPath: args["white-policy-model"] || null,
       modelBlendWeight: args["white-blend"] ? Number(args["white-blend"]) : undefined,
-      orderingWeight: args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined
+      orderingWeight: args["white-ordering-weight"] ? Number(args["white-ordering-weight"]) : undefined,
+      policyWeight: args["white-policy-weight"] ? Number(args["white-policy-weight"]) : undefined,
+      policyMaxPly: args["white-policy-max-ply"] ? Number(args["white-policy-max-ply"]) : undefined
     }),
     blackOptions: buildSideOptions({
       valueModelPath: args["black-model"] || args.model || null,
       orderingValueModelPath: args["black-ordering-model"] || null,
+      policyModelPath: args["black-policy-model"] || null,
       modelBlendWeight: args["black-blend"] ? Number(args["black-blend"]) : undefined,
-      orderingWeight: args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined
+      orderingWeight: args["black-ordering-weight"] ? Number(args["black-ordering-weight"]) : undefined,
+      policyWeight: args["black-policy-weight"] ? Number(args["black-policy-weight"]) : undefined,
+      policyMaxPly: args["black-policy-max-ply"] ? Number(args["black-policy-max-ply"]) : undefined
     })
   });
 

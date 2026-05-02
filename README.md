@@ -91,21 +91,41 @@ The current value-model pipeline uses an `842`-feature board encoding:
 
 Recent experiments also added a **canonical side-to-move encoding**, so learning runs no longer waste capacity relearning white/black symmetry from scratch.
 
+Recent policy experiments add a separate **candidate-move encoder**:
+
+- the same `842`-feature canonical board state
+- plus `220` move-specific features
+- total candidate vector length: `1062`
+
+That policy encoder includes:
+
+- from-square, to-square, and capture-square planes
+- moving-piece, captured-piece, and promotion one-hots
+- move flags such as capture, castle, en passant, wrap, and promotion
+- normalized move geometry and legal-move-count context
+
 ### Training Loop
 
 The current workflow is:
 
 1. Generate self-play positions with the custom search engine.
 2. Export those positions into train/validation value datasets.
-3. Train baseline models offline.
-4. Evaluate those models against held-out positions.
-5. Benchmark model-guided search against the handcrafted search baseline.
+3. Export legal candidate sets for teacher-move policy training when needed.
+4. Train baseline models offline.
+5. Evaluate those models against held-out positions.
+6. Benchmark model-guided search against the handcrafted search baseline.
 
 Current baseline models:
 
 - `linear`
 - `mlp`
 - `dense` (stacked hidden layers in the Torch path)
+
+The newer policy path trains a **listwise move-ordering model**:
+
+- one grouped position at a time
+- one teacher move per legal candidate set
+- cross-entropy over the legal-move list instead of flat binary candidate labels
 
 There are now two training paths:
 
@@ -119,6 +139,7 @@ What works today:
 - self-play generation
 - dataset export
 - baseline value-model training
+- candidate-move policy export
 - offline evaluation
 - model-guided search experiments
 - a browser-exposed ML-backed variant engine built from a curated trained model
@@ -127,6 +148,7 @@ What does **not** work yet:
 
 - the learned engine is still only modestly stronger than the plain variant-search baseline
 - the ML-backed engine is still early-stage and nowhere near Stockfish-level strength on classic chess
+- the newer policy-ordering model is strong offline, but not yet consistently above the current value-hybrid in independent live benchmarks
 
 That is important context: this repo already contains a real ML pipeline and a playable ML-backed variant engine, but the learned evaluator is still early rather than fully mature.
 
@@ -161,6 +183,12 @@ Export train/validation value datasets:
 make export-dataset
 ```
 
+Export train/validation policy datasets:
+
+```bash
+make export-policy-dataset
+```
+
 Train a baseline value model:
 
 ```bash
@@ -177,6 +205,12 @@ Train with PyTorch:
 
 ```bash
 make train-value-torch
+```
+
+Train a grouped policy-ordering model with PyTorch:
+
+```bash
+make train-policy-torch
 ```
 
 Evaluate a saved value model:
@@ -202,9 +236,11 @@ The lower-level scripts are also useful directly when running experiments:
 ```bash
 node scripts/selfplay.js --games 40 --rules random --white search --black heuristic --encoding canonical
 node scripts/export-dataset.js --input ml/datasets/selfplay.jsonl --search-weight 1 --outcome-weight 0
+node scripts/export-policy-dataset.js --input ml/datasets/selfplay.jsonl --label-field teacher
 python3 scripts/train-value-model.py --model linear --epochs 20
 ./.venv/bin/python scripts/train-value-model-torch.py --model mlp --hidden-size 64 --epochs 24
 ./.venv/bin/python scripts/train-value-model-torch.py --model dense --hidden-sizes 128,64 --epochs 20
+./.venv/bin/python scripts/train-policy-model-torch.py --model mlp --hidden-size 256 --epochs 18
 python3 scripts/eval-value-model.py --model ml/models/value-model.json
 node scripts/benchmark.js --games 12 --rules random --white search --black heuristic
 node scripts/benchmark-sweep.js --candidate hybrid --reference search --games-per-seed 8 --seeds s1,s2,s3

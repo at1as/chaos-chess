@@ -2,12 +2,13 @@
   if (typeof module === "object" && module.exports) {
     module.exports = factory(
       require("./engine.js"),
-      require("./position-encoder.js")
+      require("./position-encoder.js"),
+      require("./move-encoder.js")
     );
   } else {
-    root.ChessPlusComputer = factory(root.ChessPlus, root.ChessPlusFeatures);
+    root.ChessPlusComputer = factory(root.ChessPlus, root.ChessPlusFeatures, root.ChessPlusMoveFeatures);
   }
-}(typeof globalThis !== "undefined" ? globalThis : this, function (engine, features) {
+}(typeof globalThis !== "undefined" ? globalThis : this, function (engine, features, moveFeatures) {
   "use strict";
 
   var PIECE_VALUES = {
@@ -301,7 +302,7 @@
     return 0.5 * Math.log((1 + value) / (1 - value));
   }
 
-  function normalizeValueModelSpec(modelSpec) {
+  function normalizeModelSpec(modelSpec) {
     if (!modelSpec) {
       return null;
     }
@@ -311,6 +312,13 @@
     }
 
     return modelSpec;
+  }
+
+  function resolveModelFeatureEncoding(modelSpec, fallbackEncoding) {
+    return fallbackEncoding ||
+      (modelSpec && modelSpec.trainingConfig && modelSpec.trainingConfig.featureEncoding) ||
+      (modelSpec && modelSpec.featureEncoding) ||
+      "absolute";
   }
 
   function evaluateLinearModel(modelSpec, vector) {
@@ -395,14 +403,27 @@
     return total;
   }
 
+  function evaluateModelVector(modelSpec, vector) {
+    if (modelSpec.modelType === "linear") {
+      return evaluateLinearModel(modelSpec, vector);
+    }
+
+    if (modelSpec.modelType === "mlp") {
+      return evaluateMlpModel(modelSpec, vector);
+    }
+
+    if (modelSpec.modelType === "dense") {
+      return evaluateDenseModel(modelSpec, vector);
+    }
+
+    throw new Error("Unsupported model type: " + modelSpec.modelType);
+  }
+
   function createValueModelEvaluator(modelSpec, options) {
-    var normalizedModel = normalizeValueModelSpec(modelSpec);
+    var normalizedModel = normalizeModelSpec(modelSpec);
     var config = options || {};
     var scoreScale = Number(config.scoreScale) || DEFAULT_MODEL_SEARCH_SCALE;
-    var featureEncoding = config.featureEncoding ||
-      (modelSpec && modelSpec.trainingConfig && modelSpec.trainingConfig.featureEncoding) ||
-      modelSpec.featureEncoding ||
-      "absolute";
+    var featureEncoding = resolveModelFeatureEncoding(modelSpec, config.featureEncoding);
     var encoder = null;
 
     if (!normalizedModel) {
@@ -427,15 +448,7 @@
       var prediction;
       var engineScore;
 
-      if (normalizedModel.modelType === "linear") {
-        prediction = evaluateLinearModel(normalizedModel, vector);
-      } else if (normalizedModel.modelType === "mlp") {
-        prediction = evaluateMlpModel(normalizedModel, vector);
-      } else if (normalizedModel.modelType === "dense") {
-        prediction = evaluateDenseModel(normalizedModel, vector);
-      } else {
-        throw new Error("Unsupported value model type: " + normalizedModel.modelType);
-      }
+      prediction = evaluateModelVector(normalizedModel, vector);
 
       engineScore = atanh(clampPrediction(prediction)) * scoreScale;
 
@@ -445,6 +458,51 @@
 
       return engineScore;
     };
+  }
+
+  function createPolicyModelEvaluator(modelSpec, options) {
+    var normalizedModel = normalizeModelSpec(modelSpec);
+    var config = options || {};
+    var featureEncoding = resolveModelFeatureEncoding(modelSpec, config.featureEncoding || "canonical");
+    var stateVectorEncoder;
+
+    if (!normalizedModel) {
+      return null;
+    }
+
+    if (!moveFeatures || typeof moveFeatures.encodeCandidateVector !== "function") {
+      throw new Error("Move encoder is unavailable for policy-model evaluation.");
+    }
+
+    if (featureEncoding === "canonical" &&
+      features &&
+      typeof features.encodeCanonicalStateVector === "function") {
+      stateVectorEncoder = features.encodeCanonicalStateVector;
+    } else if (features && typeof features.encodeStateVector === "function") {
+      stateVectorEncoder = function encodeStateVectorForPolicy(state) {
+        return features.encodeStateVector(state, { encoding: featureEncoding });
+      };
+    }
+
+    if (!stateVectorEncoder) {
+      throw new Error("Position encoder is unavailable for policy-model evaluation.");
+    }
+
+    function evaluatePolicyModel(state, candidate, policyOptions) {
+      var vector = moveFeatures.encodeCandidateVector(state, candidate, {
+        encoding: featureEncoding,
+        legalMoveCount: policyOptions && policyOptions.legalMoveCount,
+        stateVector: policyOptions && policyOptions.stateVector
+      });
+
+      return evaluateModelVector(normalizedModel, vector);
+    }
+
+    evaluatePolicyModel.prepareStateVector = function prepareStateVector(state) {
+      return stateVectorEncoder(state);
+    };
+    evaluatePolicyModel.featureEncoding = featureEncoding;
+    return evaluatePolicyModel;
   }
 
   function resolveLeafEvaluator(options) {
@@ -466,6 +524,18 @@
 
     if (options && options.orderingValueModel) {
       return createValueModelEvaluator(options.orderingValueModel, options);
+    }
+
+    return null;
+  }
+
+  function resolvePolicyEvaluator(options) {
+    if (options && typeof options.policyEvaluator === "function") {
+      return options.policyEvaluator;
+    }
+
+    if (options && options.policyModel) {
+      return createPolicyModelEvaluator(options.policyModel, options);
     }
 
     return null;
@@ -660,14 +730,26 @@
     return score;
   }
 
-  function orderCandidates(state, candidates, preferredCandidate, context) {
+  function orderCandidates(state, candidates, preferredCandidate, context, ply) {
     var rules = state.rules;
     var maximizing = !context || state.turn === context.rootColor;
     var orderingWeight = context ? context.orderingWeight : 0;
+    var policyWeight = context ? context.policyWeight : 0;
+    var policyMaxPly = context ? context.policyMaxPly : Infinity;
+    var preparedPolicyVector = null;
+
+    if (context &&
+      context.policyEvaluator &&
+      ply <= policyMaxPly &&
+      typeof context.policyEvaluator.prepareStateVector === "function") {
+      preparedPolicyVector = context.policyEvaluator.prepareStateVector(state);
+    }
+
     var scoredCandidates = candidates.map(function scoreCandidate(candidate) {
       var score = orderingScore(candidate, rules, preferredCandidate);
       var nextState;
       var modelScore;
+      var policyScore;
 
       if (context && context.orderingEvaluator && orderingWeight !== 0) {
         nextState = engine.applyMove(state, candidate.move, candidate.promotion);
@@ -675,6 +757,17 @@
 
         if (Number.isFinite(modelScore)) {
           score += (maximizing ? 1 : -1) * modelScore * orderingWeight;
+        }
+      }
+
+      if (context && context.policyEvaluator && policyWeight !== 0 && ply <= policyMaxPly) {
+        policyScore = context.policyEvaluator(state, candidate, {
+          legalMoveCount: candidates.length,
+          stateVector: preparedPolicyVector
+        });
+
+        if (Number.isFinite(policyScore)) {
+          score += policyScore * policyWeight;
         }
       }
 
@@ -719,10 +812,12 @@
     return 3;
   }
 
-  function createSearchContext(state, candidateCount, options, leafEvaluator, orderingEvaluator) {
+  function createSearchContext(state, candidateCount, options, leafEvaluator, orderingEvaluator, policyEvaluator) {
     var moveTime = Number(options && options.moveTime) || 0;
     var blendWeight = Number(options && options.modelBlendWeight);
     var orderingWeight = Number(options && options.orderingWeight);
+    var policyWeight = Number(options && options.policyWeight);
+    var policyMaxPly = Number(options && options.policyMaxPly);
 
     if (!Number.isFinite(blendWeight)) {
       blendWeight = DEFAULT_MODEL_BLEND;
@@ -730,6 +825,14 @@
 
     if (!Number.isFinite(orderingWeight)) {
       orderingWeight = 0.0025;
+    }
+
+    if (!Number.isFinite(policyWeight)) {
+      policyWeight = 140;
+    }
+
+    if (!Number.isFinite(policyMaxPly)) {
+      policyMaxPly = Infinity;
     }
 
     return {
@@ -741,7 +844,10 @@
       leafEvaluator: leafEvaluator,
       modelBlendWeight: Math.max(0, Math.min(1, blendWeight)),
       orderingEvaluator: orderingEvaluator,
-      orderingWeight: orderingWeight
+      orderingWeight: orderingWeight,
+      policyEvaluator: policyEvaluator,
+      policyWeight: policyWeight,
+      policyMaxPly: policyMaxPly
     };
   }
 
@@ -807,7 +913,7 @@
       return bestScore;
     }
 
-    candidates = orderCandidates(state, expandMoveCandidates(state), null, context);
+    candidates = orderCandidates(state, expandMoveCandidates(state), null, context, ply);
 
     if (candidates.length === 0) {
       bestScore = evaluateLeafState(state, context, analysis);
@@ -902,6 +1008,7 @@
     var bestSelection;
     var leafEvaluator;
     var orderingEvaluator;
+    var policyEvaluator;
 
     if (candidates.length === 0) {
       return null;
@@ -924,11 +1031,12 @@
 
     leafEvaluator = resolveLeafEvaluator(options);
     orderingEvaluator = resolveOrderingEvaluator(options);
-    context = createSearchContext(state, candidates.length, options, leafEvaluator, orderingEvaluator);
+    policyEvaluator = resolvePolicyEvaluator(options);
+    context = createSearchContext(state, candidates.length, options, leafEvaluator, orderingEvaluator, policyEvaluator);
 
     for (depth = 1; depth <= context.maxDepth; depth += 1) {
       try {
-        orderedCandidates = orderCandidates(state, candidates, completedBestCandidate || heuristicCandidate, context);
+        orderedCandidates = orderCandidates(state, candidates, completedBestCandidate || heuristicCandidate, context, 0);
         scoredCandidates = [];
 
         for (candidateIndex = 0; candidateIndex < orderedCandidates.length; candidateIndex += 1) {
@@ -1116,8 +1224,11 @@
     this.requestToken = 0;
     this.valueModel = config.valueModel || null;
     this.orderingValueModel = config.orderingValueModel || null;
+    this.policyModel = config.policyModel || null;
     this.modelBlendWeight = Number(config.modelBlendWeight);
     this.orderingWeight = Number(config.orderingWeight);
+    this.policyWeight = Number(config.policyWeight);
+    this.policyMaxPly = Number(config.policyMaxPly);
     this.label = config.label || "Model Search";
     this.id = config.id || "variant-model-search";
     this.supportsRulesFn = typeof config.supportsRules === "function" ? config.supportsRules : null;
@@ -1148,7 +1259,10 @@
             valueModel: self.valueModel,
             modelBlendWeight: self.modelBlendWeight,
             orderingValueModel: self.orderingValueModel,
-            orderingWeight: self.orderingWeight
+            orderingWeight: self.orderingWeight,
+            policyModel: self.policyModel,
+            policyWeight: self.policyWeight,
+            policyMaxPly: self.policyMaxPly
           }));
         } catch (error) {
           reject(error);
@@ -1185,7 +1299,9 @@
     SearchVariantEngine: SearchVariantEngine,
     ModelVariantEngine: ModelVariantEngine,
     parseUciMove: parseUciMove,
+    expandMoveCandidates: expandMoveCandidates,
     evaluateState: evaluateState,
+    createPolicyModelEvaluator: createPolicyModelEvaluator,
     scoreHeuristicState: scoreHeuristicState,
     createValueModelEvaluator: createValueModelEvaluator,
     chooseHeuristicMove: chooseHeuristicMove,

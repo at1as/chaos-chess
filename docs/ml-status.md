@@ -10,8 +10,10 @@ What exists today:
 - a classic-engine path via Stockfish
 - a custom variant search engine
 - a flat feature encoder for board-state learning
+- a candidate-move encoder for policy-style supervision
 - self-play data generation
 - dataset export for supervised value learning
+- dataset export for teacher-move policy learning
 - zero-dependency baseline training and evaluation scripts
 - a PyTorch training path for larger experiments
 - a benchmark harness for quantitative comparisons
@@ -105,6 +107,27 @@ Current encoding modes:
 
 This matters because canonical encoding removes unnecessary color-symmetry burden from the model and produced stronger offline results in later experiments.
 
+### 3b. Candidate-Move Encoder
+
+Primary file:
+
+- `src/move-encoder.js`
+
+Current representation:
+
+- canonical board-state features = `842`
+- move-specific features = `220`
+- total candidate vector length = `1062`
+
+Move-specific features include:
+
+- from-square, to-square, and capture-square planes
+- moving-piece, captured-piece, and promotion one-hots
+- move flags such as capture, castle, en passant, wrap, and promotion
+- normalized deltas and legal-move-count context
+
+This encoder exists because value-only learning was not the whole problem. The engine also needs help choosing which legal moves to search first.
+
 ### 4. Self-Play Dataset Generator
 
 Primary files:
@@ -152,6 +175,8 @@ The newer teacher-labeling path also makes it possible to decouple:
 
 That is useful because it lets the repo generate more decisive games while still keeping full teacher-score coverage.
 
+The latest self-play samples also preserve full `stateSnapshot` data, which makes it possible to reconstruct legal candidate sets later for policy training.
+
 ### 5. Benchmark Harness
 
 Primary files:
@@ -197,6 +222,29 @@ Important implementation details:
 
 This is intentionally a baseline ML layer, not the final model story. Its role is to prove the training and evaluation loop on top of the existing search system.
 
+### 6b. Policy Model Training
+
+Primary files:
+
+- `scripts/export-policy-dataset.js`
+- `scripts/train-policy-model-torch.py`
+
+What exists today:
+
+- self-play trajectories can be expanded into full legal candidate sets
+- teacher-move labels can supervise candidate ranking
+- the Torch trainer now supports grouped, listwise cross-entropy over legal-move sets
+- runtime search can consume a trained policy model as move-ordering guidance
+- integration can be limited by ply depth so the model only influences the top of the tree
+
+Important implementation details:
+
+- policy training is grouped by `positionId`, not flattened blindly across candidates
+- the current trainer optimizes teacher-move top-1 accuracy rather than candidate-level binary loss
+- the current best policy model is a simple `mlp` with hidden size `256`
+
+This is the repo's most ambitious ML component so far. It is closer to "learned search guidance" than simple value regression.
+
 ### 7. Shared-Model Strategy
 
 The current direction is one shared model across all rule combinations, not one model per variant preset.
@@ -222,12 +270,15 @@ Evidence:
 - asymmetric trajectory generation plus full teacher labeling improved outcome diversity without giving up score coverage
 - linear and MLP baselines both fit the value targets meaningfully
 - the best offline model so far is the `exp5` Torch `mlp` trained on teacher-labeled canonical data, with validation correlation around `0.939`
+- the best policy-ordering model so far reaches held-out teacher-move top-1 accuracy around `0.731`
 
 But:
 
 - the learned engine only shows a modest edge over plain variant search so far, not a dramatic one
 - ordering-only guidance still tends to flatten out near parity, so the current winning configuration uses a light model blend in leaf evaluation
 - a deeper stacked `dense` network did not beat the simpler one-hidden-layer Torch `mlp` on the same `exp4` teacher set
+- the new policy model is strong offline, but its online gain is still sensitive to how deep in the search tree it is allowed to steer ordering
+- the best current policy integration is `root-only` guidance with a very light weight, and even that is not yet consistently above baseline on independent seed families
 
 So the project is past the "toy ML scaffolding" stage and now has a real model-backed engine in the product, but it is still early rather than decisively strong.
 

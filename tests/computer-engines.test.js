@@ -5,6 +5,7 @@ const path = require("node:path");
 const chess = require("../src/engine.js");
 const computer = require("../src/computer-engines.js");
 const features = require("../src/position-encoder.js");
+const moveFeatures = require("../src/move-encoder.js");
 
 function makeState(pieces, options = {}) {
   return chess.createStateFromPieces(pieces, {
@@ -192,6 +193,77 @@ test("searchPosition accepts a dense multi-layer value model", () => {
   assert.ok(result);
   assert.ok(result.move);
   assert.equal(typeof result.nodes, "number");
+});
+
+test("policy-model evaluator scores legal candidates directly", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "p", square: "e2" }
+  ]);
+  const candidates = computer.expandMoveCandidates(state);
+  const preferred = candidates.find((candidate) => (
+    candidate.move.from.x === chess.algebraicToCoord("e2").x &&
+    candidate.move.to.x === chess.algebraicToCoord("e4").x &&
+    candidate.move.to.y === chess.algebraicToCoord("e4").y
+  ));
+  const other = candidates.find((candidate) => candidate !== preferred);
+  const policyVector = moveFeatures.encodeCandidateVector(state, preferred, {
+    encoding: "canonical",
+    legalMoveCount: candidates.length
+  });
+  const weights = new Array(policyVector.length).fill(0);
+  let index;
+
+  for (index = 0; index < policyVector.length; index += 1) {
+    if (policyVector[index] === 1) {
+      weights[index] = 0.1;
+    }
+  }
+
+  const evaluator = computer.createPolicyModelEvaluator({
+    modelType: "linear",
+    inputSize: policyVector.length,
+    weights,
+    bias: -0.25,
+    featureEncoding: "canonical"
+  });
+
+  assert.equal(evaluator(state, preferred, { legalMoveCount: candidates.length }) > evaluator(state, other, { legalMoveCount: candidates.length }), true);
+});
+
+test("searchPosition accepts a policy model for candidate ordering", () => {
+  const state = makeState([
+    { color: "w", type: "k", square: "e1" },
+    { color: "b", type: "k", square: "e8" },
+    { color: "w", type: "p", square: "e2" }
+  ]);
+  const candidates = computer.expandMoveCandidates(state);
+  const preferred = candidates.find((candidate) => moveFeatures.candidateToUci(candidate) === "e2e4");
+  const vector = moveFeatures.encodeCandidateVector(state, preferred, {
+    encoding: "canonical",
+    legalMoveCount: candidates.length
+  });
+  const weights = vector.map((value) => (value === 1 ? 0.05 : 0));
+  const result = computer.searchPosition(state, {
+    maxDepth: 1,
+    moveTime: 100,
+    policyModel: {
+      modelType: "linear",
+      inputSize: vector.length,
+      weights,
+      bias: -0.1,
+      featureEncoding: "canonical"
+    },
+    policyWeight: 1000
+  });
+
+  assert.ok(result);
+  assert.deepEqual(result.move, {
+    from: chess.algebraicToCoord("e2"),
+    to: chess.algebraicToCoord("e4"),
+    promotion: null
+  });
 });
 
 test("curated variant ML model asset loads in the runtime evaluator", () => {

@@ -69,12 +69,18 @@ function runColorBalancedSweep(config) {
     seeds,
     candidateModelPath: config.candidateModelPath || null,
     candidateOrderingModelPath: config.candidateOrderingModelPath || null,
+    candidatePolicyModelPath: config.candidatePolicyModelPath || null,
     candidateBlendWeight: config.candidateBlendWeight === undefined ? null : config.candidateBlendWeight,
     candidateOrderingWeight: config.candidateOrderingWeight === undefined ? null : config.candidateOrderingWeight,
+    candidatePolicyWeight: config.candidatePolicyWeight === undefined ? null : config.candidatePolicyWeight,
+    candidatePolicyMaxPly: config.candidatePolicyMaxPly === undefined ? null : config.candidatePolicyMaxPly,
     referenceModelPath: config.referenceModelPath || null,
     referenceOrderingModelPath: config.referenceOrderingModelPath || null,
+    referencePolicyModelPath: config.referencePolicyModelPath || null,
     referenceBlendWeight: config.referenceBlendWeight === undefined ? null : config.referenceBlendWeight,
     referenceOrderingWeight: config.referenceOrderingWeight === undefined ? null : config.referenceOrderingWeight,
+    referencePolicyWeight: config.referencePolicyWeight === undefined ? null : config.referencePolicyWeight,
+    referencePolicyMaxPly: config.referencePolicyMaxPly === undefined ? null : config.referencePolicyMaxPly,
     perSeed: [],
     totals: {
       totalGames: 0,
@@ -95,14 +101,20 @@ function runColorBalancedSweep(config) {
   const candidateOptions = buildSideOptions({
     valueModelPath: config.candidateModelPath,
     orderingValueModelPath: config.candidateOrderingModelPath,
+    policyModelPath: config.candidatePolicyModelPath,
     modelBlendWeight: config.candidateBlendWeight,
-    orderingWeight: config.candidateOrderingWeight
+    orderingWeight: config.candidateOrderingWeight,
+    policyWeight: config.candidatePolicyWeight,
+    policyMaxPly: config.candidatePolicyMaxPly
   });
   const referenceOptions = buildSideOptions({
     valueModelPath: config.referenceModelPath,
     orderingValueModelPath: config.referenceOrderingModelPath,
+    policyModelPath: config.referencePolicyModelPath,
     modelBlendWeight: config.referenceBlendWeight,
-    orderingWeight: config.referenceOrderingWeight
+    orderingWeight: config.referenceOrderingWeight,
+    policyWeight: config.referencePolicyWeight,
+    policyMaxPly: config.referencePolicyMaxPly
   });
 
   for (const seed of seeds) {
@@ -201,12 +213,18 @@ function main(argv) {
     seeds: args.seeds,
     candidateModelPath: args["candidate-model"] || args.model || null,
     candidateOrderingModelPath: args["candidate-ordering-model"] || null,
+    candidatePolicyModelPath: args["candidate-policy-model"] || null,
     candidateBlendWeight: args["candidate-blend"] ? Number(args["candidate-blend"]) : undefined,
     candidateOrderingWeight: args["candidate-ordering-weight"] ? Number(args["candidate-ordering-weight"]) : undefined,
+    candidatePolicyWeight: args["candidate-policy-weight"] ? Number(args["candidate-policy-weight"]) : undefined,
+    candidatePolicyMaxPly: args["candidate-policy-max-ply"] ? Number(args["candidate-policy-max-ply"]) : undefined,
     referenceModelPath: args["reference-model"] || null,
     referenceOrderingModelPath: args["reference-ordering-model"] || null,
+    referencePolicyModelPath: args["reference-policy-model"] || null,
     referenceBlendWeight: args["reference-blend"] ? Number(args["reference-blend"]) : undefined,
-    referenceOrderingWeight: args["reference-ordering-weight"] ? Number(args["reference-ordering-weight"]) : undefined
+    referenceOrderingWeight: args["reference-ordering-weight"] ? Number(args["reference-ordering-weight"]) : undefined,
+    referencePolicyWeight: args["reference-policy-weight"] ? Number(args["reference-policy-weight"]) : undefined,
+    referencePolicyMaxPly: args["reference-policy-max-ply"] ? Number(args["reference-policy-max-ply"]) : undefined
   });
   const outputPath = args.output ? path.resolve(process.cwd(), args.output) : null;
 

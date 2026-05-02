@@ -437,3 +437,143 @@ Questions to answer:
 - does a slightly different outcome/search blend outperform `0.90 / 0.10`?
 - can a stronger teacher pass or a larger dataset push the live edge above the current modest margin?
 - is policy-style supervision the next lever now that value-only regression finally produced a positive gameplay signal?
+
+## 2026-05-01: `exp6` Policy-Style Move Ordering
+
+### Motivation
+
+By the end of `exp5`, value modeling had clearly crossed the line from "toy" to "useful," but the live edge was still small and unstable.
+
+That suggested a different bottleneck:
+
+- the engine needed help valuing positions
+- but it also needed help deciding which legal moves to search first
+
+So `exp6` introduced a policy-style path instead of another round of value-only regression.
+
+### Data And Representation
+
+New infrastructure added for `exp6`:
+
+- self-play samples now preserve full `stateSnapshot` data
+- `src/move-encoder.js` encodes legal candidates directly
+- `scripts/export-policy-dataset.js` expands trajectories into teacher-labeled candidate sets
+- `scripts/train-policy-model-torch.py` trains grouped listwise policy models
+
+Policy representation:
+
+- board-state features: `842`
+- move-specific features: `220`
+- total candidate vector length: `1062`
+
+The move-specific block includes:
+
+- from-square, to-square, and capture-square planes
+- moving-piece, captured-piece, and promotion one-hots
+- move flags for capture, friendly capture, castle, en passant, wrap, and promotion
+- normalized move deltas plus legal-move-count context
+
+### Teacher Setup
+
+For `exp6`, the policy teacher was the current shipped value-hybrid engine:
+
+- teacher bot: `hybrid`
+- teacher model: `assets/models/variant-ml-hybrid-v1.json`
+- teacher blend: `0.10`
+
+Trajectory generation mixed several player pairings to widen the state distribution:
+
+- `search vs heuristic`
+- `heuristic vs search`
+- `search vs search`
+
+Combined dataset:
+
+- `54` self-play games
+- `2394` labeled positions
+- `74354` legal candidates
+- average legal move count: `42.14`
+
+### Model Comparison
+
+Grouped listwise policy training on the same split:
+
+- `exp6-policy-mlp256`
+  top-1 `0.7307`, mean teacher probability `0.6471`
+- `exp6-policy-dense256x128`
+  top-1 `0.7265`, mean teacher probability `0.6395`
+- `exp6-policy-dense512x256x128`
+  top-1 `0.7161`, mean teacher probability `0.6537`
+
+Important read:
+
+- the best policy model was the simpler `mlp256`
+- more depth did not help
+- grouped listwise supervision worked much better than the earlier flat pilot path
+
+### Online Integration Attempts
+
+First attempt:
+
+- use the policy model for move ordering at every searched node
+
+Result:
+
+- too aggressive
+- moderate weights often made the engine worse against plain `Variant Search`
+
+That suggested distribution shift:
+
+- the policy model was trained on actual game positions
+- but full-tree integration forced it to rank deeper search states it had never really seen
+
+### Root-Limited Policy Guidance
+
+To test that theory, search integration gained `policyMaxPly`, which caps how deep the policy model is allowed to influence move ordering.
+
+Best promising configuration:
+
+- policy model: `exp6-policy-mlp256`
+- policy weight: `10`
+- policy max ply: `0` (root only)
+
+Matched-seed comparison at `60ms`, random rules, `3` games per seed per color, seeds `exp6rt1..exp6rt3`:
+
+- baseline hybrid vs search
+  `1W / 2L / 15D`, score `0.472`
+- root-only policy hybrid vs search
+  `3W / 1L / 14D`, score `0.556`
+
+This was the first sign that root-only policy guidance could help without destabilizing deeper search.
+
+### Independent Verification
+
+Independent seeds `exp6rv1..exp6rv4`, `4` games per seed per color, same `60ms` budget:
+
+- baseline hybrid vs search
+  `2W / 1L / 29D`, score `0.516`
+- root-only policy hybrid vs search
+  `2W / 1L / 29D`, score `0.516`
+
+### Current Read
+
+`exp6` is a real technical improvement to the repo even though it is not yet a product promotion:
+
+- the repo now supports full teacher-labeled policy training
+- the move-ordering model is strong offline
+- root-only guidance is the most defensible live integration tried so far
+- but the online edge is not stable enough yet to replace the shipped `Variant ML Hybrid`
+
+So the honest conclusion is:
+
+- `exp6` upgraded the ML architecture substantially
+- it did **not** yet produce a consistently stronger public engine
+
+### Next Step After `exp6`
+
+The next useful experiments are:
+
+- more teacher data, especially from stronger or more varied teachers
+- depth-aware policy schedules instead of a hard root cutoff
+- joint value-plus-policy training
+- policy fine-tuning specifically on positions where search is currently indecisive

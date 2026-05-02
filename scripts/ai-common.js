@@ -65,24 +65,68 @@ function parseRulesSpec(spec, randomFn) {
 }
 
 function legalCandidates(game) {
-  const candidates = [];
-  const legalMoves = game.getAllLegalMoves();
+  return computer.expandMoveCandidates(game.state);
+}
 
-  for (const move of legalMoves) {
-    if (move.piece &&
-      move.piece.type === "p" &&
-      (move.to.y === 0 || move.to.y === 7)) {
-      for (const promotion of ["q", "r", "b", "n"]) {
-        candidates.push({ move, promotion });
+function cloneBoard(board) {
+  return (board || []).map((piece) => (piece ? {
+    color: piece.color,
+    type: piece.type
+  } : null));
+}
+
+function serializeState(state) {
+  return {
+    board: cloneBoard(state.board),
+    turn: state.turn,
+    rules: chess.normalizeRules(state.rules),
+    castlingRights: {
+      w: {
+        k: Boolean(state.castlingRights && state.castlingRights.w && state.castlingRights.w.k),
+        q: Boolean(state.castlingRights && state.castlingRights.w && state.castlingRights.w.q)
+      },
+      b: {
+        k: Boolean(state.castlingRights && state.castlingRights.b && state.castlingRights.b.k),
+        q: Boolean(state.castlingRights && state.castlingRights.b && state.castlingRights.b.q)
       }
+    },
+    enPassant: state.enPassant ? {
+      x: state.enPassant.x,
+      y: state.enPassant.y,
+      pawnX: state.enPassant.pawnX,
+      pawnY: state.enPassant.pawnY
+    } : null,
+    fullmoveNumber: Number.isFinite(Number(state.fullmoveNumber)) ? Number(state.fullmoveNumber) : 1
+  };
+}
 
-      continue;
-    }
-
-    candidates.push({ move, promotion: null });
+function restoreState(snapshot) {
+  if (!snapshot) {
+    return null;
   }
 
-  return candidates;
+  return {
+    board: cloneBoard(snapshot.board),
+    turn: snapshot.turn === "b" ? "b" : "w",
+    rules: chess.normalizeRules(snapshot.rules),
+    castlingRights: {
+      w: {
+        k: Boolean(snapshot.castlingRights && snapshot.castlingRights.w && snapshot.castlingRights.w.k),
+        q: Boolean(snapshot.castlingRights && snapshot.castlingRights.w && snapshot.castlingRights.w.q)
+      },
+      b: {
+        k: Boolean(snapshot.castlingRights && snapshot.castlingRights.b && snapshot.castlingRights.b.k),
+        q: Boolean(snapshot.castlingRights && snapshot.castlingRights.b && snapshot.castlingRights.b.q)
+      }
+    },
+    enPassant: snapshot.enPassant ? {
+      x: Number(snapshot.enPassant.x),
+      y: Number(snapshot.enPassant.y),
+      pawnX: Number(snapshot.enPassant.pawnX),
+      pawnY: Number(snapshot.enPassant.pawnY)
+    } : null,
+    fullmoveNumber: Number.isFinite(Number(snapshot.fullmoveNumber)) ? Number(snapshot.fullmoveNumber) : 1
+  };
 }
 
 function loadModelPayload(modelPath) {
@@ -130,8 +174,8 @@ function chooseMove(bot, game, options) {
   }
 
   if (bot === "hybrid" || bot === "model" || bot === "model-search") {
-    if (!options || (!options.valueModel && !options.orderingValueModel)) {
-      throw new Error("Hybrid model search requires a valueModel or orderingValueModel payload.");
+    if (!options || (!options.valueModel && !options.orderingValueModel && !options.policyModel)) {
+      throw new Error("Hybrid model search requires a valueModel, orderingValueModel, or policyModel payload.");
     }
 
     return {
@@ -221,6 +265,7 @@ function playGame(config) {
       legalMoveCount: game.analysis.legalMoves.length,
       featureEncoding,
       featureVector: features.encodeStateVector(game.state, { encoding: featureEncoding }),
+      stateSnapshot: serializeState(game.state),
       searchScore: decision.score,
       searchDepth: decision.depth,
       searchNodes: decision.nodes,
@@ -287,11 +332,14 @@ function ensureParentDir(outputPath) {
 module.exports = {
   RULE_KEYS,
   createSeededRandom,
+  legalCandidates,
   parseArgs,
   parseRulesSpec,
   loadModelPayload,
   playGame,
+  restoreState,
   serializeDecision,
+  serializeState,
   ensureParentDir,
   featureSchema: features.featureSchema
 };

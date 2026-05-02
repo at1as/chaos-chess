@@ -24,7 +24,7 @@ That is the right place to be. The next challenge is no longer "can we train a m
 
 ## Recommended Next Step
 
-Use the current training path to build stronger teacher datasets and move to a more capable training stack, then integrate the best model in a way that actually improves search.
+Use the current training path to build stronger teacher datasets and integrate the best model in a way that actually improves search.
 
 Why this is next:
 
@@ -34,20 +34,24 @@ Why this is next:
 - self-play already exists
 - dataset export now exists
 - baseline training and evaluation now exist
-- hybrid-search experiments now exist
+- value- and policy-guided search experiments now exist
 
 This should still be one shared model for all rule combinations, not one model per variant.
 
-## Phase 1: Supervised Value Modeling
+## Phase 1: Supervised Value And Policy Modeling
 
 ### Training Objective
 
-Train a small model that predicts position strength from the 842-feature board encoding.
+Train small models that predict:
+
+- position strength from the `842`-feature board encoding
+- teacher move choice from the `1062`-feature candidate-move encoding
 
 Recommended targets:
 
 - normalized `searchScore`
 - final game `outcome`
+- teacher move among legal candidates
 
 That can be done either as:
 
@@ -69,7 +73,7 @@ Suggested first neural shape:
 842 -> 256 -> 128 -> 1
 ```
 
-This is intentionally modest. The goal is to prove the loop, not to overbuild the first model.
+For policy supervision, favor grouped listwise objectives over flat candidate classification. That lines the training loss up with the actual move-ordering problem.
 
 ### What Already Exists
 
@@ -105,6 +109,7 @@ First integration options:
 - replace the handcrafted leaf evaluation
 - blend handcrafted score with model score
 - use the model only for move ordering
+- limit learned move ordering to the top of the tree when deeper-node generalization is noisy
 
 Recommended order:
 
@@ -131,6 +136,7 @@ Possible follow-ups:
 
 - self-play loops that refresh the dataset from stronger engines
 - policy plus value heads
+- depth-aware policy integration
 - lightweight MCTS experiments
 - search distillation into smaller fast models
 - rule-specific ablation studies
@@ -156,11 +162,11 @@ That makes the repo read like a real AI/ML engineering project instead of a vagu
 The next concrete implementation order should be:
 
 1. generate larger teacher datasets from deeper search
-2. move training to a stronger stack such as PyTorch, ideally using Apple Silicon acceleration
-3. compare teacher-data quality, target designs, and model sizes
-4. improve hybrid integration through ordering and blended evaluation
-5. benchmark on larger color-balanced match sets, not just tiny smoke comparisons
-6. explore policy-style supervision or richer search targets if value-only parity persists
-7. expose the model-backed engine in the browser UI only after it is credibly useful
+2. compare teacher-data quality, target designs, and model sizes
+3. improve hybrid integration through ordering and blended evaluation
+4. benchmark on larger color-balanced match sets, not just tiny smoke comparisons
+5. tune depth-aware policy integration and other distribution-shift defenses
+6. explore joint policy-plus-value models or richer search targets if parity persists
+7. expose new model-backed engines in the browser UI only after they are credibly useful
 
 That is the shortest path from today's codebase to a genuine hybrid ML engine.
