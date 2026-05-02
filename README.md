@@ -59,6 +59,16 @@ So the current split is intentional:
 
 The browser UI is still primarily a playable product surface. Most of the ML work currently lives in the search, data, and training pipeline.
 
+### AI Snapshot
+
+| Engine | Applies To | Role | Current Read | Main Limitation |
+| --- | --- | --- | --- | --- |
+| `Stockfish` | Classic chess only | Orthodox chess engine | Strongest option for standard chess play | Not valid for Chaos Chess variants |
+| `Variant Search` | Variant games | Custom rule-aware search baseline | Stable baseline and useful search teacher | Limited by handcrafted evaluation and browser-sized search budgets |
+| `Variant ML Hybrid` | Variant games | Shipped ML-backed engine | Current best integrated variant engine; scored `0.537` and `0.525` against plain `Variant Search` on two confirmatory seed families | Edge is real but modest, and the matches are still draw-heavy |
+| `Heuristic Baseline` | Variant games | Very weak fast baseline | Useful for comparisons, ablations, and data generation | Much weaker than the search-backed engines |
+| `Policy / Candidate-Score / Pairwise Models` | Variant games | Experimental search-guidance paths | Strong offline learning signals and useful research direction | Not yet consistently stronger than the shipped hybrid in independent live benchmarks |
+
 ## ML Strategy
 
 If you want the quickest visual explanation of the AI stack, start with [docs/how-the-ai-works.md](docs/how-the-ai-works.md).
@@ -143,6 +153,15 @@ The newer search-guidance experiments also include:
 - hard-position mining based on baseline-vs-teacher disagreement and teacher root-margin filters
 
 ### Current ML Status
+
+#### Benchmark Snapshot
+
+| Path | Best Evidence So Far | What It Means | Current Limitation |
+| --- | --- | --- | --- |
+| `Variant ML Hybrid` | Sequential color-balanced confirmatory sweeps scored `0.537` and `0.525` vs plain `Variant Search` | The repo has a shipped ML-backed engine that can beat the non-ML search baseline | The edge is still modest rather than dramatic |
+| `Candidate-Score Regression` | Held-out fit reached `RMSE 0.0723` and `Pearson 0.9762` on teacher root-score deltas | The model can learn teacher move-score structure very well offline | That signal has not yet translated into a reliable live strength gain |
+| `Pairwise Ranking` | Best shortlist-aligned run reached about `0.956` pair accuracy and `0.915` held-out top-1 reconstruction | Relative move ranking is a credible modeling direction for search guidance | Independent live sweeps still flatten back toward parity |
+| `Hard-Position Mining` | Hard-slice pairwise model reached `0.542` on a short tuning family | Mining disagreements and high-margin positions is directionally useful | The same idea fell to `0.469` on an independent confirmatory family |
 
 What works today:
 
