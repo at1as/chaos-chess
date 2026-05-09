@@ -4,9 +4,7 @@
 
 ## Preview
 
-![Chaos Chess screenshot](assets/chaos-chess-screenshot.png)
-
-[Demo video](assets/chaos-chess-demo.webm)
+![Chaos Chess demo](assets/chaos-chess-demo.gif)
 
 ## What Makes It Different
 
